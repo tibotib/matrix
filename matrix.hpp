@@ -326,8 +326,8 @@ Matrix<T> Matrix<T>::dot(const Matrix<T> &a)const {
                 throw std::invalid_argument("Bad size for multiplication\n");
 
         Matrix<T> ret(this->m_length, a.m_width);
+        std::vector<T> colA(this->m_width);
         for(size_t i = 0u; i < a.m_width; i++) {
-                std::vector<T> colA(this->m_width);
                 for(int j = 0; j < this->m_width; j++)
                         colA[j] = a.m_tab[j][i];
                 for(size_t j = 0u; j < this->m_length; j++) {
@@ -382,37 +382,21 @@ Matrix<T> Matrix<T>::dot(const std::vector<Matrix<T>> &vec) {
         auto p = get_length(vec);
         std::vector<std::vector<unsigned int>> tab(p.size(), std::vector<unsigned int>(p.size()));
         std::vector<std::vector<int>> s(p.size(), std::vector<int>(p.size()));
-        for(auto ele : p)
-                std::cout << ele << std::endl;
+
         for(size_t l = 1; l < p.size(); l++) {
                 for(int j = l, i = 1; j < p.size(); j++, i++) {
-                        //on remplit tab [i][j]
                         tab[i-1][j] = std::numeric_limits<unsigned int>::max() ;
                         for(int k = i-1; k < j; k++) {
                                 auto q = tab[i-1][k] + tab[k + 1][j] + p[i-1]*p[k+1]*p[j+1];
-
-                                std::cout << "tab[i][k] = " << tab[i][k] << std::endl;
-                                std::cout << "tab[k + 1][j] = " << tab[k + 1][j] << std::endl;
-                                std::cout << "p[i]*p[k+1]*p[j]" << p[i]*p[k]*p[j] << std::endl;
-                                std::cout << std::endl;
-                                std::cout << "q= " << q << std::endl;
-
                                 if(q < tab[i-1][j]) {
-                                        std::cout << "ok " << std::endl;
                                         tab[i-1][j] = q;
                                         s[i-1][j]   = k+1;
                                 }
+
                         }
-                        std::cout << "new " << std::endl;
                 }
         }
 
-        for(size_t i = 0; i < vec.size(); i++) {
-                for(size_t j = 0; j < vec.size(); j++)
-                        std::cout << s[i][j] << ' ';
-                std::cout<<std::endl;
-        }
-//        return Matrix<T>();
         return dot_static(s, vec, 0, vec.size() - 1);
 }
 
@@ -620,14 +604,20 @@ Matrix<T> Matrix<T>::dot512(const Matrix<T> &a)const {
                         if(sizeof(T) == 4) {//if its integer
                                 if(Type::TypeIsInt<T>::value) {
                                         for(size_t k = 0; k < this->m_width; k+=8) {
-                                                __m256i f = _mm256_set_epi32(this->m_tab[i][j], this->m_tab[i][j+1], this->m_tab[i][j+2], this->m_tab[i][j+3], this->m_tab[i][j+4], this->m_tab[i][j+5], this->m_tab[i][j+6], this->m_tab[i][j+7]);
-                                                __m256i s = _mm256_set_epi32(a.m_tab[i][j], a.m_tab[i][j+1], a.m_tab[i][j+2], a.m_tab[i][j+3], a.m_tab[i][j+4], a.m_tab[i][j+5], a.m_tab[i][j+6], a.m_tab[i][j+7]);
-                                                __m256i r = _mm256_mul_epi32(f, s);
+                                                __m256i f  = _mm256_set_epi32(m_tab[j][k], m_tab[j][k+1], m_tab[j][k+2], m_tab[j][k+3], m_tab[j][k+4], m_tab[j][k+5], m_tab[j][k+6], m_tab[j][k+7]);
+                                                __m256i s = _mm256_set_epi32(colA[k], colA[k+1], colA[k+2], colA[k+3],colA[k+4], colA[k+5], colA[k+6], colA[k+7]);
+                                                __m256i r = _mm256_mullo_epi32(f, s);
 
-                                                auto ymm2 = _mm256_permute2f128_si256(r, r, 1);
+                                                int *tmp_tab = (int*)&r;
+                                                //int tmp_tab[sizeof(__m256i)/sizeof(int)];
+                                                //_mm256_store_si256((__m256i *)tmp_tab, r);
+                                                tmp += tmp_tab[0] + tmp_tab[1]+ tmp_tab[2]+ tmp_tab[3]+ tmp_tab[4]+ tmp_tab[5]+ tmp_tab[6]+ tmp_tab[7];
+                                                /*auto ymm2 = _mm256_permute2f128_si256(r, r, 1);
                                                 r = _mm256_add_epi32(r, ymm2);
                                                 r = _mm256_hadd_epi32(r, r);
                                                 r = _mm256_hadd_epi32(r, r);
+                                                tmp += _mm256_extract_epi32(r, 0);*/
+                                                //tmp += r;
                                         }
                                 }
 
@@ -636,7 +626,10 @@ Matrix<T> Matrix<T>::dot512(const Matrix<T> &a)const {
                                                 __m256 vecA = _mm256_set_ps(m_tab[j][k], m_tab[j][k+1], m_tab[j][k+2], m_tab[j][k+3], m_tab[j][k+4], m_tab[j][k+5], m_tab[j][k+6], m_tab[j][k+7]);
                                                 __m256 vecB = _mm256_set_ps(colA[k], colA[k+1], colA[k+2], colA[k+3],colA[k+4], colA[k+5], colA[k+6], colA[k+7]);
                                                 __m256 r    = _mm256_mul_ps(vecA, vecB);
-                                                tmp += sum8(r);
+
+                                                float *tmp_tab = (float*)&r;
+                                                //tmp += sum8(r);
+                                                tmp += tmp_tab[0] + tmp_tab[1]+ tmp_tab[2]+ tmp_tab[3]+ tmp_tab[4]+ tmp_tab[5]+ tmp_tab[6]+ tmp_tab[7];
                                         }
                                 }
                                 else{
