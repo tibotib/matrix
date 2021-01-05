@@ -28,7 +28,7 @@ static std::vector<T> generate_data(size_t size)
 }
 
 int main() {
-        using value_type = float;
+        using value_type = int;
         auto vec = std::vector<std::vector<int> > { {1, 2, 3}, {1, 2, 3}, {1, 2, 3} };
         //Matrix<double> mt = Matrix<double>(std::vector<std::vector<double> > { {1, 2, 3}, {1, 2, 3}, {1, 2, 3} });
         //Matrix<double> ma( Matrix<double>(std::vector<std::vector<double> > { {1, 2, 3}, {1, 2, 3}, {1, 2, 3} }));
@@ -40,7 +40,7 @@ int main() {
                 std::vector<value_type> v;
                  for(size_t j = 0u; j < N; j++) {
                          //v.push_back(j);
-                           v.push_back(static_cast<float>(rand()));
+                           v.push_back(static_cast<int>(rand()));
                         // v.push_back(boost::rational<long int>(rand() % 100, rand() % 100));
                  }
                  cpy.push_back(v);
@@ -81,6 +81,7 @@ Identity
 /*
 strassen
 */
+
         auto at = ma.strassen(mb);
         //at.display();
 /*
