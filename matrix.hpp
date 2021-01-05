@@ -622,7 +622,7 @@ Matrix<T> Matrix<T>::dot512(const Matrix<T> &a)const {
                                         for(size_t k = 0; k < this->m_width; k+=8) {
                                                 __m256i f = _mm256_set_epi32(this->m_tab[i][j], this->m_tab[i][j+1], this->m_tab[i][j+2], this->m_tab[i][j+3], this->m_tab[i][j+4], this->m_tab[i][j+5], this->m_tab[i][j+6], this->m_tab[i][j+7]);
                                                 __m256i s = _mm256_set_epi32(a.m_tab[i][j], a.m_tab[i][j+1], a.m_tab[i][j+2], a.m_tab[i][j+3], a.m_tab[i][j+4], a.m_tab[i][j+5], a.m_tab[i][j+6], a.m_tab[i][j+7]);
-                                                __m256i r = _mm256_add_epi32(f, s);
+                                                __m256i r = _mm256_mul_epi32(f, s);
                                                 T *res    = (T*) (&r);
                                                 tmp += res[7];
                                                 tmp += res[6];
@@ -641,6 +641,11 @@ Matrix<T> Matrix<T>::dot512(const Matrix<T> &a)const {
                                                 __m256 vecB = _mm256_set_ps(colA[k], colA[k+1], colA[k+2], colA[k+3],colA[k+4], colA[k+5], colA[k+6], colA[k+7]);
                                                 __m256 r    = _mm256_mul_ps(vecA, vecB);
                                                 tmp += sum8(r);
+                                        }
+                                }
+                                else{
+                                        for(size_t k = 0; k < this->m_width; k++) {
+                                                tmp += this->m_tab[j][k] * colA[k];
                                         }
                                 }
                         }
