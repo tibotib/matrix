@@ -623,15 +623,11 @@ Matrix<T> Matrix<T>::dot512(const Matrix<T> &a)const {
                                                 __m256i f = _mm256_set_epi32(this->m_tab[i][j], this->m_tab[i][j+1], this->m_tab[i][j+2], this->m_tab[i][j+3], this->m_tab[i][j+4], this->m_tab[i][j+5], this->m_tab[i][j+6], this->m_tab[i][j+7]);
                                                 __m256i s = _mm256_set_epi32(a.m_tab[i][j], a.m_tab[i][j+1], a.m_tab[i][j+2], a.m_tab[i][j+3], a.m_tab[i][j+4], a.m_tab[i][j+5], a.m_tab[i][j+6], a.m_tab[i][j+7]);
                                                 __m256i r = _mm256_mul_epi32(f, s);
-                                                T *res    = (T*) (&r);
-                                                tmp += res[7];
-                                                tmp += res[6];
-                                                tmp += res[5];
-                                                tmp += res[4];
-                                                tmp += res[3];
-                                                tmp += res[2];
-                                                tmp += res[1];
-                                                tmp += res[0];
+
+                                                auto ymm2 = _mm256_permute2f128_si256(r, r, 1);
+                                                r = _mm256_add_epi32(r, ymm2);
+                                                r = _mm256_hadd_epi32(r, r);
+                                                r = _mm256_hadd_epi32(r, r);
                                         }
                                 }
 
