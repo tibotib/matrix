@@ -586,8 +586,37 @@ namespace Type {
         {
             static const bool value = true;
         };
-};
 
+        template< class T >
+        struct TypeIsDouble
+        {
+            static const bool value = false;
+        };
+
+        template<>
+        struct TypeIsDouble< double >
+        {
+            static const bool value = true;
+        };
+};
+/*if(Type::TypeIsInt<T>::value) {
+        //int tmp_tab[sizeof(__m256i)/sizeof(int)];
+        for(size_t k = 0; k < this->m_width; k+=8) {
+                __m256i f  = _mm256_set_epi32(m_tab[j][k], m_tab[j][k+1], m_tab[j][k+2], m_tab[j][k+3], m_tab[j][k+4], m_tab[j][k+5], m_tab[j][k+6], m_tab[j][k+7]);
+                __m256i s = _mm256_set_epi32(colA[k], colA[k+1], colA[k+2], colA[k+3],colA[k+4], colA[k+5], colA[k+6], colA[k+7]);
+                __m256i r = _mm256_mullo_epi32(f, s);
+
+                //int *tmp_tab = (int*)&r;
+
+                //_mm256_store_si256((__m256i *)tmp_tab, r);
+                //tmp += tmp_tab[0] + tmp_tab[1]+ tmp_tab[2]+ tmp_tab[3]+ tmp_tab[4]+ tmp_tab[5]+ tmp_tab[6]+ tmp_tab[7];
+                s = _mm256_permute2f128_si256(r, r, 1);
+                r = _mm256_add_epi32(r, s);
+                r = _mm256_hadd_epi32(r, r);
+                r = _mm256_hadd_epi32(r, r);
+                tmp += _mm256_extract_epi32(r, 0);
+        }
+}*/
 template <typename T>
 Matrix<T> Matrix<T>::dot512(const Matrix<T> &a)const {
         if(this->m_width != a.m_length)
@@ -601,49 +630,39 @@ Matrix<T> Matrix<T>::dot512(const Matrix<T> &a)const {
 
                 for(size_t j = 0u; j < this->m_length; j++) {
                         T tmp = 0;
-                        if(sizeof(T) == 4) {//if its integer
-                                if(Type::TypeIsInt<T>::value) {
-                                        for(size_t k = 0; k < this->m_width; k+=8) {
-                                                __m256i f  = _mm256_set_epi32(m_tab[j][k], m_tab[j][k+1], m_tab[j][k+2], m_tab[j][k+3], m_tab[j][k+4], m_tab[j][k+5], m_tab[j][k+6], m_tab[j][k+7]);
-                                                __m256i s = _mm256_set_epi32(colA[k], colA[k+1], colA[k+2], colA[k+3],colA[k+4], colA[k+5], colA[k+6], colA[k+7]);
-                                                __m256i r = _mm256_mullo_epi32(f, s);
+#ifdef __AVX2__
+                        if(sizeof(T) == 4) {
 
-                                                int *tmp_tab = (int*)&r;
-                                                //int tmp_tab[sizeof(__m256i)/sizeof(int)];
-                                                //_mm256_store_si256((__m256i *)tmp_tab, r);
-                                                tmp += tmp_tab[0] + tmp_tab[1]+ tmp_tab[2]+ tmp_tab[3]+ tmp_tab[4]+ tmp_tab[5]+ tmp_tab[6]+ tmp_tab[7];
-                                                /*auto ymm2 = _mm256_permute2f128_si256(r, r, 1);
-                                                r = _mm256_add_epi32(r, ymm2);
-                                                r = _mm256_hadd_epi32(r, r);
-                                                r = _mm256_hadd_epi32(r, r);
-                                                tmp += _mm256_extract_epi32(r, 0);*/
-                                                //tmp += r;
-                                        }
-                                }
-
-                                else if(Type::TypeIsFloat<T>::value) {
+                                if(Type::TypeIsFloat<T>::value) {
                                         for(size_t k = 0; k < this->m_width; k+=8) {
                                                 __m256 vecA = _mm256_set_ps(m_tab[j][k], m_tab[j][k+1], m_tab[j][k+2], m_tab[j][k+3], m_tab[j][k+4], m_tab[j][k+5], m_tab[j][k+6], m_tab[j][k+7]);
                                                 __m256 vecB = _mm256_set_ps(colA[k], colA[k+1], colA[k+2], colA[k+3],colA[k+4], colA[k+5], colA[k+6], colA[k+7]);
                                                 __m256 r    = _mm256_mul_ps(vecA, vecB);
+                                                tmp += sum8(r);
+                                                goto end;
+                                        }
+                                }
+                        }
 
-                                                float *tmp_tab = (float*)&r;
-                                                //tmp += sum8(r);
-                                                tmp += tmp_tab[0] + tmp_tab[1]+ tmp_tab[2]+ tmp_tab[3]+ tmp_tab[4]+ tmp_tab[5]+ tmp_tab[6]+ tmp_tab[7];
+                        else if(sizeof(T) == 8) {
+
+                                if(Type::TypeIsDouble<T>::value) {
+                                        for(size_t k = 0; k < this->m_width; k+=4) {
+                                                __m256d vecA = _mm256_set_pd(m_tab[j][k], m_tab[j][k+1], m_tab[j][k+2], m_tab[j][k+3]);
+                                                __m256d vecB = _mm256_set_pd(colA[k], colA[k+1], colA[k+2], colA[k+3]);
+                                                __m256d r    = _mm256_mul_pd(vecA, vecB);
+                                                double *tmp_tab = (double*)&r;
+                                                tmp += tmp_tab[0] + tmp_tab[1]+ tmp_tab[2]+ tmp_tab[3];
                                         }
-                                }
-                                else{
-                                        for(size_t k = 0; k < this->m_width; k++) {
-                                                tmp += this->m_tab[j][k] * colA[k];
-                                        }
+                                        goto end;
                                 }
                         }
-                        else {
-                                for(size_t k = 0; k < this->m_width; k++) {
-                                        tmp += this->m_tab[j][k] * colA[k];
-                                }
+#endif
+                        for(size_t k = 0; k < this->m_width; k++) {
+                                tmp += this->m_tab[j][k] * colA[k];
                         }
-                        ret.m_tab[j][i] = tmp;
+                        end :
+                                ret.m_tab[j][i] = tmp;
                 }
         }
         return ret;
