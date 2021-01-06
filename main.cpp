@@ -10,28 +10,8 @@
 #include <unistd.h>
 #define N 8192
 
-template <typename T>
-static std::vector<T> generate_data(size_t size)
-{
-    using value_type = T;
-    // We use static in order to instantiate the random engine
-    // and the distribution once only.
-    // It may provoke some thread-safety issues.
-    static std::uniform_int_distribution<value_type> distribution(
-        std::numeric_limits<value_type>::min(),
-        std::numeric_limits<value_type>::max());
-    static std::default_random_engine generator;
-
-    std::vector<value_type> data(size);
-    std::generate(data.begin(), data.end(), []() { return distribution(generator); });
-    return data;
-}
-
 int main() {
         using value_type = int;
-        auto vec = std::vector<std::vector<int> > { {1, 2, 3}, {1, 2, 3}, {1, 2, 3} };
-        //Matrix<double> mt = Matrix<double>(std::vector<std::vector<double> > { {1, 2, 3}, {1, 2, 3}, {1, 2, 3} });
-        //Matrix<double> ma( Matrix<double>(std::vector<std::vector<double> > { {1, 2, 3}, {1, 2, 3}, {1, 2, 3} }));
         srand(getpid());
         std::vector<std::vector<value_type>>cpy;
         //std::vector<std::vector<boost::rational<long int>> > cpy;
@@ -63,7 +43,7 @@ int main() {
          auto start = std::chrono::high_resolution_clock::now();
 
 /*
-triangulaire
+triangular form using gauss algorithm
 */
 
         //mc.triangular_inferior();
@@ -90,7 +70,7 @@ pow
         //auto r = mc.pow(100);
         //r.display();
 /*
-multiplication en chaines
+matrix chain multiplication algorithm
 */
         //Matrix<double>a1(Matrix<double>(std::vector<std::vector<double>>{ {1, 1, 1, 1, 1}, {1, 1, 1, 1, 1}, {1, 1, 1, 1, 1}, {1, 1, 1, 1, 1}, {1, 1, 1, 1, 1}, {1, 1, 1, 1, 1} }));
         //Matrix<double>a2(Matrix<double>(std::vector<std::vector<double>>{ {1, 1}, {1, 1}, {1, 1}, {1, 1}, {1, 1} }));
@@ -105,9 +85,6 @@ multiplication en chaines
         std::cout <<std::endl << "end" << std::endl;
         auto stop = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-
-        // To get the value of duration use the count()
-        // member function on the duration object
         std::cout << duration.count() << std::endl;
 
 
