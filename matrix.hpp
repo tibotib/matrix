@@ -14,6 +14,7 @@
 #include <immintrin.h>
 #include <fstream>
 #include <limits>
+#include <tuple>
 
 template <typename T>
 class Matrix {
@@ -95,6 +96,7 @@ class Matrix {
                 Matrix<T> transposeGPU();
 
                 Matrix<T> dot512(const Matrix<T> &b)const;
+                std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> decompositionPLU();
 };
 
 #include "identity.hpp"
@@ -562,6 +564,78 @@ static float sum8(__m256 x) {
     return _mm_cvtss_f32(sum);
 }
 
+template <typename T>
+static T m_abs(T ele) {
+        return (ele > 0) ? ele : -ele;
+}
+
+template <typename T>
+static void swap(T &a, T &b) {
+        auto tmp = a;
+        a = b;
+        b = tmp;
+}
+
+template <typename T>
+std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionPLU() {
+        if(!this->isSquare())
+                throw std::invalid_argument("Matrix must be square\n");
+
+        T ele = this->m_tab[0][0];
+        Matrix<T> L = Identity<T>(this->m_width);
+        Matrix<T> U(this->m_width, this->m_width);
+        Matrix<T> P(this->m_width, this->m_width);
+
+        std::vector<int>v(this->m_width);
+        for(int i = 0; i < this->m_width; i++)
+                v[i] = i;
+
+        Matrix<T> A_(this->m_width - 1, this->m_width - 1);
+
+        for(int l = 0; l < this->m_width; l++) {
+
+                int max = m_abs(this->m_tab[l][l]);
+                int index_swap = l;//indice de la ligne qu'on echange avec
+                for(int i = l+1; i < this->m_width; i++) {//ici on recupere les indices a swap
+                        auto t = m_abs(this->m_tab[i][l]);
+                        if(max < t) {
+                                max        = t;
+                                index_swap = i;
+                        }
+                }
+                U.m_tab[l][l] = max;
+                auto tmp = v[l];
+                v[l] = v[index_swap];
+                v[index_swap] = tmp;
+
+                for(int i = l; i < this->m_width; i++) {//on swap les indices
+                        auto tmp = this->m_tab[index_swap][i];
+                        this->m_tab[index_swap][i] = this->m_tab[l][i];
+                        this->m_tab[l][i] = tmp;
+                }
+
+                for(int i = l; i < this->m_length; i++) {
+                        L.m_tab[i][l] = this->m_tab[i][l] / U.m_tab[l][l];
+                        U.m_tab[l][i] = this->m_tab[l][i];
+                        L.m_tab[i][i] = 1;
+                }
+                for(int i = l+1; i < this->m_width; i++) {
+                        for(int j = l+1; j < this->m_width; j++) {
+                                this->m_tab[i][j] -= L.m_tab[i][l] * U.m_tab[l][j];
+                        }
+                }
+        }
+
+        for(int i = 0; i < this->m_length; i++) {//on parse v, le tableau des permutations
+                P.m_tab[i][v[i]] = 1;
+                for(int j = 0; j < v[i] && j < v[v[i]]; j++) {
+                        swap(L.m_tab[v[i]][j], L.m_tab[v[v[i]]][j]);
+                }
+        }
+
+        return std::tuple<Matrix<T>, Matrix<T>, Matrix<T>>(P, L, U);
+}
+
 namespace Type {
         template< class T >
         struct TypeIsInt
@@ -905,13 +979,31 @@ Matrix<T> Matrix<T>::inverse() {
                 throw std::invalid_argument("Can\' t compute inverse : the matrix is not square");
 
         Matrix<T> id = Identity<T>(this->m_length);
+        std::vector<int>v(this->m_length);
+        for(int i = 0; i < this->m_length; i++)
+                v[i] = i;
 //triangulaire superieure
+
         for(size_t k = 0u; k < this->m_width && k < this->m_length; ++k) {
-                T ref = this->m_tab[k][k];
+                T ref = m_abs(this->m_tab[k][k]);
+                int index_swap = k;
+
+                for(int i = k; i < this->m_length; i++) {
+                        if(m_abs(this->m_tab[i][k]) > ref) {
+                                ref = this->m_tab[i][k];
+                                swap(v[k], v[i]);
+                                index_swap = i;
+                        }
+                }
+
+                for(int i = k; i < this->m_length; i++) {
+                        swap(this->m_tab[k][i], this->m_tab[index_swap][i]);
+                }
+
                 if(ref == 0)
                         throw std::invalid_argument("matrix isn\'t inversible\n");
                 for(size_t i = k + 1; i < this->m_length; ++i) {
-                        auto factor = (this->m_tab[i][k] / ref);
+                        auto factor = (this->m_tab[i][k] / this->m_tab[k][k]);
                         for(size_t j = 0u; j < this->m_width; j++) {
                                 id.m_tab[i][j]    -= id.m_tab[k][j] * factor;
                                 this->m_tab[i][j] -= this->m_tab[k][j] * factor;
@@ -944,8 +1036,12 @@ Matrix<T> Matrix<T>::inverse() {
                         id.m_tab[i][j] /= coef;
                 }
         }
+        Matrix<T> P(this->m_length, this->m_length);
+        for(int i = 0; i < this->m_length; i++) {
+                P.m_tab[i][v[i]] = 1;
+        }
 
-        return id;
+        return (id).dot(P);
 
 }
 
@@ -957,12 +1053,31 @@ Matrix<T> Matrix<T>::inverse_const() const{
         auto tmp     = *this;
         Matrix<T> id = Identity<T>(tmp.m_length);
 
+        std::vector<int>v(this->m_length);
+        for(int i = 0; i < this->m_length; i++)
+                v[i] = i;
+
         for(size_t k = 0u; k < tmp.m_width && k < tmp.m_length; ++k) {
-                T ref = tmp.m_tab[k][k];
+                T ref = m_abs(tmp.m_tab[k][k]);
+                int index_swap = k;
+
+                for(int i = k; i < tmp.m_length; i++) {
+                        if(m_abs(tmp.m_tab[i][k]) > ref) {
+                                ref = tmp.m_tab[i][k];
+                                swap(v[k], v[i]);
+                                index_swap = i;
+                        }
+                }
+
+                for(int i = k; i < tmp.m_length; i++) {
+                        swap(tmp.m_tab[k][i], tmp.m_tab[index_swap][i]);
+                }
+
+
                 if(ref == 0)
                         throw std::invalid_argument("matrix isn\'t inversible\n");
                 for(size_t i = k + 1; i < tmp.m_length; ++i) {
-                        auto factor = (tmp.m_tab[i][k] / ref);
+                        auto factor = (tmp.m_tab[i][k] / tmp.m_tab[k][k]);
                         for(size_t j = 0u; j < tmp.m_width; j++) {
                                 id.m_tab[i][j]    -= id.m_tab[k][j] * factor;
                                 tmp.m_tab[i][j] -= tmp.m_tab[k][j] * factor;
@@ -994,8 +1109,12 @@ Matrix<T> Matrix<T>::inverse_const() const{
                         id.m_tab[i][j] /= coef;
                 }
         }
+        Matrix<T> P(this->m_length, this->m_length);
+        for(int i = 0; i < this->m_length; i++) {
+                P.m_tab[i][v[i]] = 1;
+        }
 
-        return id;
+        return (id).dot(P);
 
 }
 
