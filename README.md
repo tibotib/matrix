@@ -24,7 +24,7 @@ int main() {
   auto md = ma.strassen(mb);
   md.display();
 
-//or if you have NVDIA GPU
+//if you have NVDIA GPU
   auto m = ma.dotGPU(mb);
   m.display();
   
