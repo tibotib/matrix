@@ -15,6 +15,7 @@
 #include <fstream>
 #include <limits>
 #include <tuple>
+#include <cmath>
 
 template <typename T>
 class Matrix {
@@ -31,6 +32,8 @@ class Matrix {
                 void multiply_line(T factor, size_t line);
                 void add_line(size_t res_line, size_t other_line);
                 void multiply_and_add(size_t res_line, T factor, size_t other_line);
+                void swap_lines(int i, int ii);
+                void swap_colums(int j, int jj);
 
         public :
                 Matrix(const std::vector<std::vector<T> > &tab);
@@ -78,15 +81,19 @@ class Matrix {
                 bool operator==(const Matrix<T> &)const;
                 bool operator!=(const Matrix<T> &)const;
 
-                bool isSquare()const;
+                bool is_square()const;
                 T det()const;
                 size_t determinant() const;
+                T norm_vector(int i)const;
+                T dot_vectors(int i, int ii)const;
+                T dot_vectors_line(int i, int ii)const;
+                T norm_vector_line(int i)const;
 
                 void transpose();
                 void triangular_inferior();
                 void triangular_superior();
-                Matrix<T> inverse_const()const;
-                Matrix<T> inverse();
+                Matrix<T> gaussian_inverse_const()const;
+                Matrix<T> gaussian_inverse();
                 T trace()const;
                 void resize(size_t n);
                 void resize(size_t length, size_t width);
@@ -97,6 +104,12 @@ class Matrix {
 
                 Matrix<T> dot512(const Matrix<T> &b)const;
                 std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> decompositionPLU();
+                std::pair<Matrix<T>, Matrix<T>> decompositionQR();
+                Matrix<T> gram_schmidt();
+
+                bool is_permutation()const;
+                bool is_orthonormal();
+                bool is_identity()const;
 };
 
 #include "identity.hpp"
@@ -464,7 +477,7 @@ T& Matrix<T>::operator()(size_t i, size_t j) {
 }
 
 template <typename T>
-bool Matrix<T>::isSquare()const {
+bool Matrix<T>::is_square()const {
         return this->m_length == this->m_width;
 }
 
@@ -509,14 +522,14 @@ T det_recursiv(const Matrix<T> &a) {//tres long
 template <typename T>
 T Matrix<T>::det()const {
         //very long
-        if(!this->isSquare())
+        if(!this->is_square())
                 throw std::invalid_argument("Can't get determinant : the matrix is not square");
         return det_recursiv(*this);
 }
 
 template <typename T>
 size_t Matrix<T>::determinant() const{
-        if(!this->isSquare())
+        if(!this->is_square())
                 throw std::invalid_argument("Can't get determinant : the matrix is not square");
 
         auto tmp = (*this);
@@ -525,6 +538,14 @@ size_t Matrix<T>::determinant() const{
         for(size_t i = 1; i < this->m_length; i++)
                 ret *= tmp.m_tab[i][i];
         return (size_t) ret;
+}
+
+template <typename T>
+bool Matrix<T>::is_identity()const {
+        if(!this->is_square())
+                return false;
+        auto id = Identity<T>(this->m_length);
+        return *this == id;
 }
 
 template <typename T>
@@ -578,7 +599,7 @@ static void swap(T &a, T &b) {
 
 template <typename T>
 std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionPLU() {
-        if(!this->isSquare())
+        if(!this->is_square())
                 throw std::invalid_argument("Matrix must be square\n");
 
         T ele = this->m_tab[0][0];
@@ -634,6 +655,85 @@ std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionPLU() {
         }
 
         return std::tuple<Matrix<T>, Matrix<T>, Matrix<T>>(P, L, U);
+}
+
+template <typename T>
+std::pair<Matrix<T>, Matrix<T>> Matrix<T>::decompositionQR() {
+        auto q = this->gram_schmidt();
+        auto qt(q);
+        qt.transpose();
+        return qt.strassen(*this);
+}
+
+template <typename T>
+Matrix<T> Matrix<T>::gram_schmidt() {
+        Matrix<T> ret(*this);
+        ret.transpose();
+        //we take transpose to make code cache-friendly
+        for(int k = 1; k < this->m_width; k++) {
+                //we change column vector k
+                T constant;
+                for(int i = 0; i < k; i++) {
+                        constant = ret.dot_vectors_line(i, k) / ret.norm_vector_line(i);
+                        for(int j = 0; j < this->m_length; j++) {
+                                ret.m_tab[k][j] -= constant*ret.m_tab[i][j];
+                        }
+
+                }
+        }
+        //we normalize all vectors
+        for(int i = 0; i < ret.m_length; i++) {
+                auto nrm = sqrt(ret.norm_vector_line(i));
+                for(int j = 0; j < ret.m_width; j++) {
+                        ret.m_tab[i][j] /= nrm;
+                }
+        }
+        ret.transpose();
+        return ret;
+}
+
+template <typename T>
+T Matrix<T>::dot_vectors_line(int i, int ii)const {
+        if(i >= this->m_width || ii >= this->m_width)
+                throw std::invalid_argument("index is out of bounds\n");
+        T ret = 0;
+#pragma omp parallel for reduction(+ : ret)
+        for(int j = 0; j < this->m_width; j++)
+                ret += this->m_tab[i][j] * this->m_tab[ii][j];
+        return ret;
+}
+
+template <typename T>
+T Matrix<T>::norm_vector_line(int i)const {
+        if(i >= this->m_length)
+                throw std::invalid_argument("index is out of bounds\n");
+        T ret = 0;
+#pragma omp parallel for reduction(+ : ret)
+        for(int j = 0; j < this->m_length; j++)
+                ret += this->m_tab[i][j] * this->m_tab[i][j];
+        return ret;
+}
+
+template <typename T>
+T Matrix<T>::dot_vectors(int j, int jj) const{
+        if(j >= this->m_width || jj >= this->m_width)
+                throw std::invalid_argument("index is out of bounds\n");
+        T ret = 0;
+#pragma omp parallel for reduction(+ : ret)
+        for(int i = 0; i < this->m_width; i++)
+                ret += this->m_tab[i][j] * this->m_tab[i][jj];
+        return ret;
+}
+
+template <typename T>
+T Matrix<T>::norm_vector(int j) const{//it s the norm squared
+        if(j >= this->m_width)
+                throw std::invalid_argument("index is out of bounds\n");
+        T ret = 0;
+#pragma omp parallel for reduction(+ : ret)
+        for(int i = 0; i < this->m_width; i++)
+                ret += this->m_tab[i][j] * this->m_tab[i][j];
+        return ret;
 }
 
 namespace Type {
@@ -743,6 +843,44 @@ Matrix<T> Matrix<T>::dot512(const Matrix<T> &a)const {
 }
 
 template <typename T>
+bool Matrix<T>::is_permutation()const {
+        if(!this->is_square())
+                return false;
+        bool ret = true;
+        for(int i = 0; i < this->m_length; i++) {
+                bool passed = false;
+                for(int j = 0; j < this->m_width; j++) {
+                        if(this->m_tab[i][j] == 0)
+                                continue;
+                        else if(this->m_tab[i][j] == 1)
+                                passed = true;
+                        else
+                                return false;
+                }
+                ret &= passed;
+        }
+        for(int j = 0; j < this->m_width; j++) {
+                bool passed = false;
+                for(int i = 0; i < this->m_length; i++) {
+                        if(this->m_tab[i][j] == 1)
+                                passed = true;
+                }
+                ret &= passed;
+        }
+        return ret;
+}
+
+template <typename T>
+bool Matrix<T>::is_orthonormal() {//we assume that it s a square one
+        if(!this->is_square())
+                return false;
+        auto tmp(*this);
+        tmp.transpose();
+        auto l = this->strassen(tmp);
+        return l.is_identity();
+}
+
+template <typename T>
 Matrix<T> strassen_recursiv(const Matrix<T> &a, const Matrix<T> &b) {
         if(a.getLength() <= 512)
                 return a.dot512(b);
@@ -828,7 +966,7 @@ static Matrix<T> pow_recursiv(Matrix<T> a, Matrix<T> b, int n) {
 
 template <typename T>
 Matrix<T> Matrix<T>::pow(int n) {
-        if(!this->isSquare())
+        if(!this->is_square())
                 throw std::invalid_argument("Can\'t compute pow, the matrix is not square\n");
         return pow_recursiv(Identity<T>(this->m_length), *this, n);
 }
@@ -941,10 +1079,36 @@ void Matrix<T>::multiply_and_add(size_t res_line, T factor, size_t other_line) {
 }
 
 template <typename T>
+void Matrix<T>::swap_lines(int i, int ii) {
+        this->m_tab[i].swap(this->m_tab[ii]);
+}
+
+template <typename T>
+void Matrix<T>::swap_colums(int j, int jj) {
+        for(int i = 0; i < this->m_length; i++)
+                swap(this->m_tab[i][j], this->m_tab[i][jj]);
+}
+
+template <typename T>
 void Matrix<T>::triangular_inferior() {
-        //ne fonctionne qu'avec des types rationnels
-        for(size_t k = 0u; k < this->m_width && k < this->m_length; ++k) {
+        //only with rationals types
+        //we change lines iff ref = 0
+        for(size_t k = 0u; k < this->m_width && k < this->m_length; k++) {
+                if(this->m_tab[k][k] == 0) {//we search for swapping lines if this->m_tab[k][k] == 0
+                        bool ok = false;
+                        for(int i = k; i < this->m_length; i++) {
+                                if(this->m_tab[i][k] != 0) {
+                                        this->swap_lines(k, i);
+                                        ok = true;
+                                        break;
+                                }
+                        }
+                        if(!ok)
+                                continue;
+                }
+
                 T ref = this->m_tab[k][k];
+
                 for(size_t i = k + 1; i < this->m_length; ++i) {
                         auto factor = (this->m_tab[i][k] / ref);
                         multiply_and_add(i, -factor, k);
@@ -959,10 +1123,23 @@ T min(T a, T b) {
 
 template <typename T>
 void Matrix<T>::triangular_superior() {
-        //ne fonctionne qu'avec des types rationnels
-        size_t compt = 1u;
+        size_t compt = 1u;//we need this variable in the case of non-square matrix
         for(int k = this->m_width - 1; k >= 0; --k) {
+
+                if(this->m_tab[this->m_length - compt][k] == 0) {
+                        bool ok = false;
+                        for(int i = this->m_length - compt; i >= 0; --i) {
+                                if(this->m_tab[i][k] != 0) {
+                                        this->swap_lines(this->m_length - compt, i);
+                                        ok = true;
+                                        break;
+                                }
+                        }
+                        if(!ok)
+                                continue;
+                }
                 T ref = this->m_tab[this->m_length - compt][k];
+
                 for(int i = this->m_length - compt - 1; i >= 0; --i) {
                         auto factor = (this->m_tab[i][k] / ref);
                         multiply_and_add(i, -factor, this->m_length - compt);
@@ -974,34 +1151,31 @@ void Matrix<T>::triangular_superior() {
 }
 
 template <typename T>
-Matrix<T> Matrix<T>::inverse() {
+Matrix<T> Matrix<T>::gaussian_inverse() {
         if(this->m_length != this->m_width)
                 throw std::invalid_argument("Can\' t compute inverse : the matrix is not square");
 
         Matrix<T> id = Identity<T>(this->m_length);
-        std::vector<int>v(this->m_length);
-        for(int i = 0; i < this->m_length; i++)
-                v[i] = i;
-//triangulaire superieure
+//triangular inferior
 
         for(size_t k = 0u; k < this->m_width && k < this->m_length; ++k) {
-                T ref = m_abs(this->m_tab[k][k]);
-                int index_swap = k;
 
-                for(int i = k; i < this->m_length; i++) {
-                        if(m_abs(this->m_tab[i][k]) > ref) {
-                                ref = this->m_tab[i][k];
-                                swap(v[k], v[i]);
-                                index_swap = i;
+                if(this->m_tab[k][k] == 0) {//we search for swapping lines if this->m_tab[k][k] == 0
+                        bool ok = false;
+                        for(int i = k; i < this->m_length; i++) {
+                                if(this->m_tab[i][k] != 0) {
+                                        this->swap_lines(k, i);
+                                        swap(id.m_tab[i], id.m_tab[k]);
+                                        ok = true;
+                                        break;
+                                }
                         }
+                        if(!ok)
+                                throw std::invalid_argument("matrix isn\'t inversible\n");
                 }
 
-                for(int i = k; i < this->m_length; i++) {
-                        swap(this->m_tab[k][i], this->m_tab[index_swap][i]);
-                }
+                T ref = this->m_tab[k][k];
 
-                if(ref == 0)
-                        throw std::invalid_argument("matrix isn\'t inversible\n");
                 for(size_t i = k + 1; i < this->m_length; ++i) {
                         auto factor = (this->m_tab[i][k] / this->m_tab[k][k]);
                         for(size_t j = 0u; j < this->m_width; j++) {
@@ -1012,22 +1186,19 @@ Matrix<T> Matrix<T>::inverse() {
                 }
         }
 
+
 //matrice diagonale
         size_t compt = 1u;
         for(int k = this->m_width - 1; k >= 0; --k) {
-                T ref = this->m_tab[this->m_length - compt][k];
-                if(ref == 0)
-                        throw std::invalid_argument("matrix isn\'t inversible\n");
-                for(int i = this->m_length - compt - 1; i >= 0; --i) {
+                T ref = this->m_tab[k][k];
+
+                for(int i = k - 1; i >= 0; --i) {
                         auto factor = (this->m_tab[i][k] / ref);
                         for(size_t j = 0u; j < this->m_width; j++) {
-                                id.m_tab[i][j]    -= id.m_tab[this->m_length - compt][j] * factor;
-                                this->m_tab[i][j] = this->m_tab[i][j] - this->m_tab[this->m_length - compt][j] * factor;
+                                id.m_tab[i][j]    -= id.m_tab[k][j] * factor;
+                                this->m_tab[i][j] = this->m_tab[i][j] - this->m_tab[k][j] * factor;
                         }
                 }
-                ++compt;
-                if(compt > this->m_length)
-                        break;
         }
 
         for(size_t i = 0; i < id.m_length; i++) {
@@ -1036,86 +1207,18 @@ Matrix<T> Matrix<T>::inverse() {
                         id.m_tab[i][j] /= coef;
                 }
         }
-        Matrix<T> P(this->m_length, this->m_length);
-        for(int i = 0; i < this->m_length; i++) {
-                P.m_tab[i][v[i]] = 1;
-        }
 
-        return (id).dot(P);
+        return id;
 
 }
 
 template <typename T>
-Matrix<T> Matrix<T>::inverse_const() const{
+Matrix<T> Matrix<T>::gaussian_inverse_const() const{
         if(this->m_length != this->m_width)
                 throw std::invalid_argument("Can\' t compute inverse : the matrix is not square");
 
-        auto tmp     = *this;
-        Matrix<T> id = Identity<T>(tmp.m_length);
-
-        std::vector<int>v(this->m_length);
-        for(int i = 0; i < this->m_length; i++)
-                v[i] = i;
-
-        for(size_t k = 0u; k < tmp.m_width && k < tmp.m_length; ++k) {
-                T ref = m_abs(tmp.m_tab[k][k]);
-                int index_swap = k;
-
-                for(int i = k; i < tmp.m_length; i++) {
-                        if(m_abs(tmp.m_tab[i][k]) > ref) {
-                                ref = tmp.m_tab[i][k];
-                                swap(v[k], v[i]);
-                                index_swap = i;
-                        }
-                }
-
-                for(int i = k; i < tmp.m_length; i++) {
-                        swap(tmp.m_tab[k][i], tmp.m_tab[index_swap][i]);
-                }
-
-
-                if(ref == 0)
-                        throw std::invalid_argument("matrix isn\'t inversible\n");
-                for(size_t i = k + 1; i < tmp.m_length; ++i) {
-                        auto factor = (tmp.m_tab[i][k] / tmp.m_tab[k][k]);
-                        for(size_t j = 0u; j < tmp.m_width; j++) {
-                                id.m_tab[i][j]    -= id.m_tab[k][j] * factor;
-                                tmp.m_tab[i][j] -= tmp.m_tab[k][j] * factor;
-                        }
-
-                }
-        }
-
-        size_t compt = 1u;
-        for(int k = tmp.m_width - 1; k >= 0; --k) {
-                T ref = tmp.m_tab[tmp.m_length - compt][k];
-                for(int i = tmp.m_length - compt - 1; i >= 0; --i) {
-                        auto factor = (tmp.m_tab[i][k] / ref);
-                        if(ref == 0)
-                                throw std::invalid_argument("matrix isn\'t inversible\n");
-                        for(size_t j = 0u; j < tmp.m_width; j++) {
-                                id.m_tab[i][j]    -= id.m_tab[tmp.m_length - compt][j] * factor;
-                                tmp.m_tab[i][j] = tmp.m_tab[i][j] - tmp.m_tab[tmp.m_length - compt][j] * factor;
-                        }
-                }
-                ++compt;
-                if(compt > tmp.m_length)
-                        break;
-        }
-
-        for(size_t i = 0; i < id.m_length; i++) {
-                auto coef = tmp.m_tab[i][i];
-                for(size_t j = 0; j < id.m_width; j++) {
-                        id.m_tab[i][j] /= coef;
-                }
-        }
-        Matrix<T> P(this->m_length, this->m_length);
-        for(int i = 0; i < this->m_length; i++) {
-                P.m_tab[i][v[i]] = 1;
-        }
-
-        return (id).dot(P);
-
+        auto tmp(*this);
+        return tmp.gaussian_inverse();
 }
 
 template <typename T>
