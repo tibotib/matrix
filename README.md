@@ -1,7 +1,5 @@
 # matrix
-Simple class Matrix with basics functions and fast multiplication.
-
-It can use GPU or AVX2 instructions.
+Simple class Matrix with basics functions and fast multiplication using GPU, AVX2 instructions or openmp.
 
 Example of basics functions :
 
@@ -27,6 +25,28 @@ int main() {
 //if you have NVDIA GPU
   auto m = ma.dotGPU(mb);
   m.display();
+  
+//QR decomposition
+  auto qr = ma.decompositionQR();
+  
+  std::cout << "Q : " << std::endl;
+  qr.first.display();
+  
+  std::cout << "R : " << std::endl;
+  qr.second.display();
+  std::cout << std::endl;
+ 
+//PLU decomposition
+  auto plu = ma.decompositionPLU();
+  
+  std::cout << "P : " << std::endl;
+  std::get<0>(plu).display();
+  
+  std::cout << "L : " << std::endl;
+  std::get<1>(plu).display();
+  
+  std::cout << "U : " << std::endl;
+  std::get<2>(plu).display();
   
   
   return 0;
