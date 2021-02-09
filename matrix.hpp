@@ -106,8 +106,6 @@ class Matrix {
                 std::pair<Matrix<T>, Matrix<T>> decompositionQR()const;
                 Matrix<T> gram_schmidt()const;
                 Matrix<std::complex<double>> fft()const;
-                std::vector<T> characteristical_polynom()const;
-                std::pair<Matrix<T>, std::vector<T>> eigen()const;
                 Matrix<T> kernel()const;
 
                 bool is_permutation()const;
@@ -726,19 +724,6 @@ Matrix<T> Matrix<T>::gram_schmidt()const {
         }
         ret.transpose();
         return ret;
-}
-
-template <typename T>
-std::vector<T> Matrix<T>::characteristical_polynom()const {
-        if(!this->is_square())
-                throw std::invalid_argument("Matrix is not square\n");
-
-
-}
-
-template <typename T>
-std::pair<Matrix<T>, std::vector<T>> Matrix<T>::eigen()const {
-        //      auto tmp =
 }
 
 template <typename T>
