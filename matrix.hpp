@@ -696,7 +696,7 @@ std::pair<Matrix<T>, Matrix<T>> Matrix<T>::decompositionQR()const {
         auto q = this->gram_schmidt();
         auto qt(q);
         qt.transpose();
-        return qt.strassen(*this);
+        return std::pair<Matrix<T>, Matrix<T>> (q, qt.strassen(*this));
 }
 
 template <typename T>
