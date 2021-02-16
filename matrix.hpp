@@ -102,18 +102,62 @@ class Matrix {
                 Matrix<T> transposeGPU();
 
                 Matrix<T> dot512(const Matrix<T> &b)const;
-                std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> decompositionPLU()const;
+                std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> decompositionPLU();
                 std::pair<Matrix<T>, Matrix<T>> decompositionQR()const;
                 Matrix<T> gram_schmidt()const;
+                Matrix<T> householder()const;
+                Matrix<T> householder_rec(int s, int n = 0)const;
                 Matrix<std::complex<double>> fft()const;
+                std::vector<T> characteristical_polynom()const;
+                std::pair<std::vector<T>, Matrix<T>> eigen()const;
                 Matrix<T> kernel()const;
 
                 bool is_permutation()const;
                 bool is_orthonormal();
                 bool is_identity()const;
+                bool is_upper_triangular()const;
 
                 Matrix<T> dot_mod(const Matrix<T> &mt, T mod)const;
                 Matrix<T> inverse_mod(T mod);//inverse modulaire
+};
+
+
+namespace Type {
+        template< class T >
+        struct TypeIsInt
+        {
+            static const bool value = false;
+        };
+
+        template<>
+        struct TypeIsInt< int >
+        {
+            static const bool value = true;
+        };
+
+        template< class T >
+        struct TypeIsFloat
+        {
+            static const bool value = false;
+        };
+
+        template<>
+        struct TypeIsFloat< float >
+        {
+            static const bool value = true;
+        };
+
+        template< class T >
+        struct TypeIsDouble
+        {
+            static const bool value = false;
+        };
+
+        template<>
+        struct TypeIsDouble< double >
+        {
+            static const bool value = true;
+        };
 };
 
 #include "identity.hpp"
@@ -271,8 +315,9 @@ void Matrix<T>::display()const {
                 for(size_t j = 0; j < this->m_width; j++) {
                         std::cout <<  this->m_tab[i][j] << " ";
                 }
-                std::cout << std::endl;
+                std::cout << '\n';
         }
+        std::cout << std::endl;
 }
 
 template <typename T>
@@ -632,7 +677,7 @@ static void swap(T &a, T &b) {
 }
 
 template <typename T>
-std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionPLU() const{
+std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionPLU() {
         if(!this->is_square())
                 throw std::invalid_argument("Matrix must be square\n");
 
@@ -693,10 +738,14 @@ std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionPLU() const{
 
 template <typename T>
 std::pair<Matrix<T>, Matrix<T>> Matrix<T>::decompositionQR()const {
-        auto q = this->gram_schmidt();
+        auto q = this->householder();
         auto qt(q);
         qt.transpose();
-        return std::pair<Matrix<T>, Matrix<T>> (q, qt.strassen(*this));
+        auto ret(qt.strassen(*this));
+        for(int i = 1; i < this->m_length && i < this->m_width; i++)
+                ret.m_tab[i][i-1] = 0;
+
+        return std::pair<Matrix<T>, Matrix<T>> (q, ret);
 }
 
 template <typename T>
@@ -715,6 +764,7 @@ Matrix<T> Matrix<T>::gram_schmidt()const {
 
                 }
         }
+
         //we normalize all vectors
         for(int i = 0; i < ret.m_length; i++) {
                 auto nrm = sqrt(ret.norm_vector_line(i));
@@ -724,6 +774,119 @@ Matrix<T> Matrix<T>::gram_schmidt()const {
         }
         ret.transpose();
         return ret;
+}
+
+template <typename T>
+Matrix<T> Matrix<T>::householder_rec(int s, int n)const {
+        if(this->m_width == 1)
+                return *this;
+
+        Matrix<T> u(this->m_length, 1);
+        for(int i = 0; i < this->m_length; i++)
+                u.m_tab[i][0] = this->m_tab[i][0];
+
+        auto alpha     = u.norm_vector(0);
+        alpha          = sqrt(alpha);
+        u.m_tab[0][0] -= alpha;
+        alpha          = u.norm_vector(0);
+
+        auto v(u);
+        v.transpose();
+
+        auto q = u.dot(v);
+        q      = q * (-2/(alpha));
+
+        for(int i = 0; i < q.m_length && i < q.m_width; i++)
+                q.m_tab[i][i] += 1;
+
+        auto r1 = q.dot(*this);
+        Matrix<T> a_(this->m_length - 1, this->m_width - 1);
+        for(int i = 0; i < this->m_length - 1; i++)
+                for(int j = 0; j < this->m_width -1; j++)
+                        a_.m_tab[i][j] = r1.m_tab[i + 1][j + 1];
+
+        for(int i = 0; i < q.m_length; i++)
+                for(int j = 0; j < n; j++)
+                        q.m_tab[i].insert(q.m_tab[i].begin(), 0.0);
+
+        q.m_length += n;
+        q.m_width += n;
+
+        std::vector<T>vec(q.m_width, 0.0);
+        for(int i = 0; i < n; i++) {
+                q.m_tab.insert(q.m_tab.begin(), vec);
+                q.m_tab[0][n-i-1] = 1;
+        }
+
+
+        if(n + 2 == s)
+                return q;
+
+        auto q1 = a_.householder_rec(s, n+1);
+        return q.strassen(q1);
+}
+
+template <typename T>
+Matrix<T> Matrix<T>::householder()const {
+        return this->householder_rec(this->m_width, 0);
+}
+
+template <typename T>
+std::vector<T> Matrix<T>::characteristical_polynom()const {
+        if(!this->is_square())
+                throw std::invalid_argument("Matrix is not square\n");
+}
+
+template <typename T>
+bool same(Matrix<T> &a, const std::vector<T> &v) {
+        int n = v.size();
+        for(size_t i = 0; i < n; i++) {
+                if(m_abs(a(i, i) - v[i]) > 1e-5)
+                        return false;
+        }
+        return true;
+}
+
+template <typename T>
+std::pair<std::vector<T>, Matrix<T>> Matrix<T>::eigen()const {
+        //doesn't return complex eigen values
+        if(!this->is_square())
+                throw std::invalid_argument("Matrix must be square to compute eigen values and eigen vectors\n");
+
+        auto a   = *this;
+        auto qr  = a.decompositionQR();
+        a        = qr.second.dot(qr.first);
+        std::vector<T> v(this->m_width);
+
+        while(!same(a, v)) {
+                qr  = a.decompositionQR();
+                for(int i = 0; i < this->m_width; i++)
+                        v[i] = a.m_tab[i][i];
+                a   = qr.second.dot(qr.first);
+        }
+
+        Matrix<T> ret;
+        bool passed = false;
+        for(int k = 0; k < v.size(); k++) {
+                a = *this;
+                for(int i = 0; i < this->m_length; i++)
+                        a.m_tab[i][i] -= v[k];
+                auto tmp = a.kernel();
+                if(passed) {
+                        for(int i = 0; i < tmp.m_length; i++) {
+                                for(int j = 0; j < tmp.m_width; j++) {
+                                        ret.m_tab[i].push_back(tmp.m_tab[i][j]);
+                                }
+                        }
+                        ret.m_width += tmp.m_width;
+                }else{
+                        ret    = tmp;
+                        passed = true;
+                }
+        }
+
+
+        return std::pair<std::vector<T>, Matrix<T>>(v, ret);
 }
 
 template <typename T>
@@ -762,20 +925,33 @@ Matrix<T> Matrix<T>::kernel()const {
                         }
                 }
         }
-
+        //tmp.display();
         Matrix<T> ret;
         int ii = 0;
         for(; ii < this->m_width && ii < this->m_length; ii++) {
-                if(tmp.m_tab[ii][ii] < 1e-8 && tmp.m_tab[ii][ii] > -1e-8) {
-                        tmp.m_tab[ii][ii] = 0;
-                        ret.m_tab.push_back(std::vector<T>(tmp.m_width));
-                        ret.m_width = tmp.m_width;
-                        ++ret.m_length;
-                        for(int i = 0; i < tmp.m_width; i++) {
-                                ret.m_tab.back()[i] = tmp.m_tab[i+n][ii];
+                if(Type::TypeIsDouble<T>::value || Type::TypeIsFloat<T>::value) {
+                        if(tmp.m_tab[ii][ii] < 1e-4 && tmp.m_tab[ii][ii] > -1e-4) {
+                                tmp.m_tab[ii][ii] = 0;
+                                ret.m_tab.push_back(std::vector<T>(tmp.m_width));
+                                ret.m_width = tmp.m_width;
+                                ++ret.m_length;
+                                for(int i = 0; i < tmp.m_width; i++) {
+                                        ret.m_tab.back()[i] = tmp.m_tab[i+n][ii];
+                                }
+                        }
+                }
+                else{
+                        if(tmp.m_tab[ii][ii] == 0) {
+                                ret.m_tab.push_back(std::vector<T>(tmp.m_width));
+                                ret.m_width = tmp.m_width;
+                                ++ret.m_length;
+                                for(int i = 0; i < tmp.m_width; i++) {
+                                        ret.m_tab.back()[i] = tmp.m_tab[i+n][ii];
+                                }
                         }
                 }
         }
+
         for(; ii < this->m_width; ii++) {
                 ret.m_tab.push_back(std::vector<T>(tmp.m_width));
                 ret.m_width = tmp.m_width;
@@ -784,7 +960,7 @@ Matrix<T> Matrix<T>::kernel()const {
                         ret.m_tab.back()[i] = tmp.m_tab[i+n][ii];
                 }
         }
-        
+
         ret.transpose();
         return ret;
 
@@ -846,6 +1022,27 @@ Matrix<std::complex<double>> Matrix<T>::fft()const {
 }
 
 template <typename T>
+bool Matrix<T>::is_upper_triangular() const{
+        if(Type::TypeIsFloat<T>::value || Type::TypeIsDouble<T>::value) {
+                for(int i = 0; i < this->m_width && i < this->m_length; i++){
+                        for(int j = 0; j < i; j++) {
+                                if(this->m_tab[i][j] > 1e-6 || this->m_tab[i][j] < -1e-6)
+                                        return false;
+                        }
+                }
+                return true;
+        }
+
+        for(int i = 0; i < this->m_width && i < this->m_length; i++){
+                for(int j = 0; j < i; j++) {
+                        if(this->m_tab[i][j] != 0)
+                                return false;
+                }
+        }
+        return true;
+}
+
+template <typename T>
 std::vector<std::complex<double>> Matrix<T>::to_complex() const {
         std::vector<std::complex<double>> ret(this->m_width);
         for(int i = 0; i < this->m_width; i++) {
@@ -856,10 +1053,10 @@ std::vector<std::complex<double>> Matrix<T>::to_complex() const {
 
 template <typename T>
 T Matrix<T>::dot_vectors_line(int i, int ii)const {
-        if(i >= this->m_width || ii >= this->m_width)
+        if(i >= this->m_length || ii >= this->m_length)
                 throw std::invalid_argument("index is out of bounds\n");
         T ret = 0;
-#pragma omp parallel for reduction(+ : ret)
+//#pragma omp parallel for reduction(+ : ret)
         for(int j = 0; j < this->m_width; j++)
                 ret += this->m_tab[i][j] * this->m_tab[ii][j];
         return ret;
@@ -870,8 +1067,8 @@ T Matrix<T>::norm_vector_line(int i)const {
         if(i >= this->m_length)
                 throw std::invalid_argument("index is out of bounds\n");
         T ret = 0;
-#pragma omp parallel for reduction(+ : ret)
-        for(int j = 0; j < this->m_length; j++)
+//#pragma omp parallel for reduction(+ : ret)
+        for(int j = 0; j < this->m_width; j++)
                 ret += this->m_tab[i][j] * this->m_tab[i][j];
         return ret;
 }
@@ -881,7 +1078,7 @@ T Matrix<T>::dot_vectors(int j, int jj) const{
         if(j >= this->m_width || jj >= this->m_width)
                 throw std::invalid_argument("index is out of bounds\n");
         T ret = 0;
-#pragma omp parallel for reduction(+ : ret)
+//#pragma omp parallel for reduction(+ : ret)
         for(int i = 0; i < this->m_width; i++)
                 ret += this->m_tab[i][j] * this->m_tab[i][jj];
         return ret;
@@ -892,49 +1089,12 @@ T Matrix<T>::norm_vector(int j) const{//it s the norm squared
         if(j >= this->m_width)
                 throw std::invalid_argument("index is out of bounds\n");
         T ret = 0;
-#pragma omp parallel for reduction(+ : ret)
-        for(int i = 0; i < this->m_width; i++)
+//#pragma omp parallel for reduction(+ : ret)
+        for(int i = 0; i < this->m_length; i++)
                 ret += this->m_tab[i][j] * this->m_tab[i][j];
         return ret;
 }
 
-namespace Type {
-        template< class T >
-        struct TypeIsInt
-        {
-            static const bool value = false;
-        };
-
-        template<>
-        struct TypeIsInt< int >
-        {
-            static const bool value = true;
-        };
-
-        template< class T >
-        struct TypeIsFloat
-        {
-            static const bool value = false;
-        };
-
-        template<>
-        struct TypeIsFloat< float >
-        {
-            static const bool value = true;
-        };
-
-        template< class T >
-        struct TypeIsDouble
-        {
-            static const bool value = false;
-        };
-
-        template<>
-        struct TypeIsDouble< double >
-        {
-            static const bool value = true;
-        };
-};
 /*if(Type::TypeIsInt<T>::value) {
         //int tmp_tab[sizeof(__m256i)/sizeof(int)];
         for(size_t k = 0; k < this->m_width; k+=8) {
