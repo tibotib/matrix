@@ -15,7 +15,7 @@ Methods of class :
 
 * some modular functions like inverse
 
-* eigen values using QR algorithm
+* eigen values using QR algorithm and eigen vectors
 
 
 
