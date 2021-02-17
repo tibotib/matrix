@@ -7,13 +7,15 @@ Methods of class :
 
 * decomposition PLU
 
-* decomposition QR and gram schmidt algorithm
+* decomposition QR using gram schmidt or householder algorithm
 
 * fast fourier transform
 
 * kernel of the matrix
 
-* some modular functions like inverse modular
+* some modular functions like inverse
+
+* eigen values using QR algorithm
 
 
 
