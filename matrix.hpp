@@ -108,14 +108,12 @@ class Matrix {
                 Matrix<T> householder()const;
                 Matrix<T> householder_rec(int s, int n = 0)const;
                 Matrix<std::complex<double>> fft()const;
-                std::vector<T> characteristical_polynom()const;
                 std::pair<std::vector<T>, Matrix<T>> eigen()const;
                 Matrix<T> kernel()const;
 
                 bool is_permutation()const;
                 bool is_orthonormal();
                 bool is_identity()const;
-                bool is_upper_triangular()const;
 
                 Matrix<T> dot_mod(const Matrix<T> &mt, T mod)const;
                 Matrix<T> inverse_mod(T mod);//inverse modulaire
@@ -832,12 +830,6 @@ Matrix<T> Matrix<T>::householder()const {
 }
 
 template <typename T>
-std::vector<T> Matrix<T>::characteristical_polynom()const {
-        if(!this->is_square())
-                throw std::invalid_argument("Matrix is not square\n");
-}
-
-template <typename T>
 bool same(Matrix<T> &a, const std::vector<T> &v) {
         int n = v.size();
         for(size_t i = 0; i < n; i++) {
@@ -884,7 +876,6 @@ std::pair<std::vector<T>, Matrix<T>> Matrix<T>::eigen()const {
                         passed = true;
                 }
         }
-
 
         return std::pair<std::vector<T>, Matrix<T>>(v, ret);
 }
@@ -1019,27 +1010,6 @@ Matrix<std::complex<double>> Matrix<T>::fft()const {
 
         auto vec = this->to_complex();
         return Matrix<std::complex<double>>(std::vector<std::vector<std::complex<double>>>(1, fft_recursive(vec)));
-}
-
-template <typename T>
-bool Matrix<T>::is_upper_triangular() const{
-        if(Type::TypeIsFloat<T>::value || Type::TypeIsDouble<T>::value) {
-                for(int i = 0; i < this->m_width && i < this->m_length; i++){
-                        for(int j = 0; j < i; j++) {
-                                if(this->m_tab[i][j] > 1e-6 || this->m_tab[i][j] < -1e-6)
-                                        return false;
-                        }
-                }
-                return true;
-        }
-
-        for(int i = 0; i < this->m_width && i < this->m_length; i++){
-                for(int j = 0; j < i; j++) {
-                        if(this->m_tab[i][j] != 0)
-                                return false;
-                }
-        }
-        return true;
 }
 
 template <typename T>
@@ -1526,18 +1496,15 @@ void Matrix<T>::echelon_form() {
         }
 
 
-        for(int k = this->m_width - 1; k >= 0; --k) {
-                T ref = this->m_tab[k][k];
-                if(ref == 0)
+        for(int j = 0; j < this->m_width && j < this->m_length; j++) {
+                auto tmp = this->m_tab[j][j];
+                if(tmp == 0 || ((Type::TypeIsFloat<T>::value || Type::TypeIsDouble<T>::value) && tmp < 1e-5 && tmp > -1e-5))
                         continue;
-
-                for(int i = k - 1; i >= 0; --i) {
-                        auto factor = (this->m_tab[i][k] / ref);
-
-                        for(size_t j = 0u; j < this->m_width; j++)
-                                this->m_tab[i][j] = this->m_tab[i][j] - this->m_tab[k][j] * factor;
+                for(int i = 0; i < this->m_length; i++) {
+                        this->m_tab[i][j] /= tmp;
                 }
         }
+
 }
 
 template <typename T>
