@@ -1,7 +1,7 @@
 # matrix
-Simple class Matrix with basics functions and fast multiplication using GPU, AVX2 instructions or openmp.
+Sample class Matrix with basics functions and fast multiplication using __GPU, AVX2 instructions or openmp__.
 
-Methods of class :
+_Methods of class :_
 
 * __inverse(using gauss)__
 
