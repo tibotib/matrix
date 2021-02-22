@@ -3,19 +3,19 @@ Simple class Matrix with basics functions and fast multiplication using GPU, AVX
 
 Methods of class :
 
-* inverse(using gauss)
+* __inverse(using gauss)__
 
-* decomposition PLU
+* __decomposition PLU__
 
-* decomposition QR using gram schmidt or householder algorithm
+* __decomposition QR__ using gram schmidt or householder algorithm
 
-* fast fourier transform
+* __Fast Fourier Transform__
 
-* kernel of the matrix
+* __Kernel of the matrix__
 
-* some modular functions like inverse
+* __inverse modular__
 
-* eigen values using QR algorithm and eigen vectors
+* __Eigen values__ using QR algorithm and __Eigen vectors__
 
 
 
