@@ -766,6 +766,9 @@ Matrix<T> Matrix<T>::gram_schmidt()const {
         //we normalize all vectors
         for(int i = 0; i < ret.m_length; i++) {
                 auto nrm = sqrt(ret.norm_vector_line(i));
+                if(nrm == 0)
+                        continue;
+                std::cout << nrm << std::endl;
                 for(int j = 0; j < ret.m_width; j++) {
                         ret.m_tab[i][j] /= nrm;
                 }
@@ -786,8 +789,10 @@ Matrix<T> Matrix<T>::householder_rec(int s, int n)const {
         auto alpha     = u.norm_vector(0);
         alpha          = sqrt(alpha);
         u.m_tab[0][0] -= alpha;
+        u.display();
         alpha          = u.norm_vector(0);
-
+        if(alpha == 0)
+                alpha = 1;
         auto v(u);
         v.transpose();
 
@@ -808,7 +813,7 @@ Matrix<T> Matrix<T>::householder_rec(int s, int n)const {
                         q.m_tab[i].insert(q.m_tab[i].begin(), 0.0);
 
         q.m_length += n;
-        q.m_width += n;
+        q.m_width  += n;
 
         std::vector<T>vec(q.m_width, 0.0);
         for(int i = 0; i < n; i++) {
@@ -823,7 +828,6 @@ Matrix<T> Matrix<T>::householder_rec(int s, int n)const {
         auto q1 = a_.householder_rec(s, n+1);
         return q.strassen(q1);
 }
-
 template <typename T>
 Matrix<T> Matrix<T>::householder()const {
         return this->householder_rec(this->m_width, 0);
