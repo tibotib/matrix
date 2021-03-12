@@ -19,6 +19,9 @@
 #include <complex>
 #include <numeric>
 
+#define PRECISION 1e-3
+#define PRECISION_QR_ALGO 1e-12
+
 template <typename T>
 class Matrix {
         template <typename U>
@@ -94,8 +97,8 @@ class Matrix {
                 T trace()const;
                 void resize(size_t n);//usefull to compute strassen for all sizes
                 void resize(size_t length, size_t width);
-                void echelon_form();
                 std::vector<std::complex<double>> to_complex() const;
+                void set_zero();//set values close to 0 to 0.0
 
                 Matrix<T> addGPU(const Matrix<T> &a);
                 Matrix<T> dotGPU(const Matrix<T> &a);
@@ -104,10 +107,12 @@ class Matrix {
                 Matrix<T> dot512(const Matrix<T> &b)const;
                 std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> decompositionPLU();
                 std::pair<Matrix<T>, Matrix<T>> decompositionQR()const;
+                std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> decompositionSVD();
                 Matrix<T> gram_schmidt()const;
                 Matrix<T> householder()const;
                 Matrix<T> householder_rec(int s, int n = 0)const;
                 Matrix<std::complex<double>> fft()const;
+                Matrix<T> polynom_multiplication(const Matrix<T> &ma) const;
                 std::pair<std::vector<T>, Matrix<T>> eigen()const;
                 Matrix<T> kernel()const;
 
@@ -460,7 +465,6 @@ static std::vector<int> get_length(const std::vector<Matrix<T>> &vec) {
 template <typename T>
 static Matrix<T>dot_static(const std::vector<std::vector<int>>  &s, const std::vector<Matrix<T>> &grid, int i, int j) {
         if(i == j) {
-                grid[i].display();
                 return grid[i];
         }
         auto a = dot_static(s, grid, i, s[i][j]-1);
@@ -598,7 +602,7 @@ T det_recursiv(const Matrix<T> &a) {//very long
 
 template <typename T>
 T Matrix<T>::det()const {
-        //very long in n!
+        //very long in O(n!)
         if(!this->is_square())
                 throw std::invalid_argument("Can't compute determinant : the matrix is not square");
         return det_recursiv(*this);
@@ -740,14 +744,183 @@ std::pair<Matrix<T>, Matrix<T>> Matrix<T>::decompositionQR()const {
         auto qt(q);
         qt.transpose();
         auto ret(qt.strassen(*this));
-        for(int i = 1; i < this->m_length && i < this->m_width; i++)
-                ret.m_tab[i][i-1] = 0;
+        ret.set_zero();
 
         return std::pair<Matrix<T>, Matrix<T>> (q, ret);
 }
 
+void resize_2(std::vector<std::complex<double>> &vec) {
+        int n = vec.size();
+        int nn = n;
+        if(n && (!(n & (n-1))))
+                return ;
+        int new_size = 1;
+        while(n != 0) {
+                new_size <<= 1;
+                n >>= 1;
+        }
+
+        vec.resize(new_size);
+        for(int i = nn; i < vec.size(); i++)
+                vec[i] = 0;
+}
+
+std::vector<std::complex<double>> fft_recursive(const std::vector<std::complex<double>> &a) {
+        if(a.size() == 1)
+                return a;
+        using namespace std::complex_literals;
+        std::vector<std::complex<double>> ret(a.size());
+
+        std::vector<std::complex<double>> v1(a.size() / 2);
+        std::vector<std::complex<double>> v2(a.size() / 2);
+
+        for(int i = 0; i < a.size()/2; i++) {
+                v1[i] = a[i*2];
+                v2[i] = a[i*2+1];
+        }
+
+        auto r1 = fft_recursive(v1);
+        auto r2 = fft_recursive(v2);
+
+        const double PI = std::acos(-1);
+        std::complex<double> w  = 1;
+        const std::complex<double> w1 = std::polar((double)1, (-(2*PI) / a.size()) );
+
+        for(int k = 0; k < r2.size(); k++) {
+                r2[k] *= w;
+                w *= w1;
+                ret[k] = r1[k] + r2[k];
+                ret[k+r2.size()] = r1[k] - r2[k];
+        }
+        return ret;
+}
+
+std::vector<std::complex<double>> ifft_recursive(const std::vector<std::complex<double>> &a) {
+        if(a.size() == 1)
+                return a;
+        using namespace std::complex_literals;
+        std::vector<std::complex<double>> ret(a.size());
+
+        std::vector<std::complex<double>> v1(a.size() / 2);
+        std::vector<std::complex<double>> v2(a.size() / 2);
+
+        for(int i = 0; i < a.size()/2; i++) {
+                v1[i] = a[i*2];
+                v2[i] = a[i*2+1];
+        }
+
+        auto r1 = ifft_recursive(v1);
+        auto r2 = ifft_recursive(v2);
+
+        const double PI = std::acos(-1);
+        std::complex<double> w  = 1;
+        const std::complex<double> w1 = std::polar((double)1, ((2*PI) / a.size()) );
+
+        for(int k = 0; k < r2.size(); k++) {
+                r2[k] *= w;
+                w *= w1;
+                ret[k] = r1[k] + r2[k];
+                ret[k+r2.size()] = r1[k] - r2[k];
+        }
+        return ret;
+}
+
+size_t get_power(int n) {
+        if((n & (n - 1)) == 0)
+                return n;
+
+        int length        = n;
+        int l             = 1;
+        while(length > 0) {
+                length = length >> 1;
+                l = l << 1;
+        }
+        return l;
+}
+
+template <typename T>
+Matrix<T> Matrix<T>::polynom_multiplication(const Matrix<T> &ma) const{
+        if(this->m_tab.size() != 1 || ma.m_tab.size() != 1)
+                throw std::invalid_argument("fft take a line vector in entry\n");
+
+        auto max = (this->m_width > ma.m_width) ? get_power(this->m_width * 2) : get_power(ma.m_width * 2);
+        auto vec1 = this->to_complex();
+        auto vec2 = ma.to_complex();
+
+        vec1.resize(max);
+        vec2.resize(max);
+        resize_2(vec1);
+        resize_2(vec2);
+
+        auto eval1 = fft_recursive(vec1);
+        auto eval2 = fft_recursive(vec2);
+        std::vector<std::complex<double>> mult(max);
+
+        for(int i = 0; i < eval1.size(); i++)
+                mult[i] = eval1[i] * eval2[i];
+
+        for(auto e : mult)
+                std::cout << e << " " << std::endl;
+
+        auto res = ifft_recursive(mult);
+        for(auto e : res) {
+                std::cout << e << " ";
+        }
+
+        std::cout << std::endl;
+
+        return Matrix<T>();
+}
+
+template <typename T>
+std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionSVD() {
+        auto tp(*this);
+        tp.transpose();
+        auto r1 = this->strassen(tp);
+        auto r2 = tp.strassen(*this);
+
+        auto u = r1.eigen();
+        auto v = r2.eigen();//can be optimised later
+
+        //u.second.transpose();
+        for(int i = 0; i < u.second.m_width; i++) {
+                auto nrm = sqrt(u.second.norm_vector(i));
+                if(nrm == 0)
+                        continue;
+                nrm = 1/nrm;
+                if(u.second.m_tab[0][i] < 0)
+                        nrm = -nrm;
+                for(int j = 0; j < u.second.m_length; j++) {
+                        u.second.m_tab[j][i] *= nrm;
+                }
+        }
+        //u.second.transpose();
+        v.second.transpose();
+        for(int i = 0; i < v.second.m_length; i++) {
+                auto nrm = sqrt(v.second.norm_vector_line(i));
+                if(nrm == 0)
+                        continue;
+                nrm = 1/nrm;
+                if(v.second.m_tab[i][0] < 0)
+                        nrm = -nrm;
+                for(int j = 0; j < v.second.m_width; j++) {
+                        v.second.m_tab[i][j] *= nrm;
+                }
+        }
+
+        auto sigma = Matrix<T>(u.second.m_length, v.second.m_length);
+        for(int i = 0; i < sigma.m_length && i < sigma.m_width; i++) {
+                sigma.m_tab[i][i] = sqrt(u.first[i]);
+        }
+
+        return std::tuple<Matrix<T>, Matrix<T>, Matrix<T>>(u.second, sigma, v.second);
+}
+
 template <typename T>
 Matrix<T> Matrix<T>::gram_schmidt()const {
+/*
+vectors of the matrix needs to be linearly independent
+*/
         Matrix<T> ret(*this);
         ret.transpose();
         //we take transpose to make code cache-friendly
@@ -755,22 +928,24 @@ Matrix<T> Matrix<T>::gram_schmidt()const {
                 //we change column vector k
                 T constant;
                 for(int i = 0; i < k; i++) {
-                        constant = ret.dot_vectors_line(i, k) / ret.norm_vector_line(i);
+                        auto tmp = ret.norm_vector_line(i);
+                        if(tmp == 0)
+                                tmp = 1;
+                        constant = ret.dot_vectors_line(i, k) / tmp;
                         for(int j = 0; j < this->m_length; j++) {
                                 ret.m_tab[k][j] -= constant*ret.m_tab[i][j];
                         }
 
                 }
         }
-
         //we normalize all vectors
         for(int i = 0; i < ret.m_length; i++) {
                 auto nrm = sqrt(ret.norm_vector_line(i));
                 if(nrm == 0)
                         continue;
-                std::cout << nrm << std::endl;
+                nrm = 1/nrm;
                 for(int j = 0; j < ret.m_width; j++) {
-                        ret.m_tab[i][j] /= nrm;
+                        ret.m_tab[i][j] *= nrm;
                 }
         }
         ret.transpose();
@@ -789,7 +964,6 @@ Matrix<T> Matrix<T>::householder_rec(int s, int n)const {
         auto alpha     = u.norm_vector(0);
         alpha          = sqrt(alpha);
         u.m_tab[0][0] -= alpha;
-        u.display();
         alpha          = u.norm_vector(0);
         if(alpha == 0)
                 alpha = 1;
@@ -828,6 +1002,7 @@ Matrix<T> Matrix<T>::householder_rec(int s, int n)const {
         auto q1 = a_.householder_rec(s, n+1);
         return q.strassen(q1);
 }
+
 template <typename T>
 Matrix<T> Matrix<T>::householder()const {
         return this->householder_rec(this->m_width, 0);
@@ -837,7 +1012,7 @@ template <typename T>
 bool same(Matrix<T> &a, const std::vector<T> &v) {
         int n = v.size();
         for(size_t i = 0; i < n; i++) {
-                if(m_abs(a(i, i) - v[i]) > 1e-5)
+                if(m_abs(a(i, i) - v[i]) > PRECISION_QR_ALGO)
                         return false;
         }
         return true;
@@ -860,13 +1035,16 @@ std::pair<std::vector<T>, Matrix<T>> Matrix<T>::eigen()const {
                         v[i] = a.m_tab[i][i];
                 a   = qr.second.dot(qr.first);
         }
-
         Matrix<T> ret;
         bool passed = false;
         for(int k = 0; k < v.size(); k++) {
                 a = *this;
+                if(k >= 1 && v[k-1]==v[k])
+                        continue;
                 for(int i = 0; i < this->m_length; i++)
                         a.m_tab[i][i] -= v[k];
+
+                a.set_zero();
                 auto tmp = a.kernel();
                 if(passed) {
                         for(int i = 0; i < tmp.m_length; i++) {
@@ -876,6 +1054,8 @@ std::pair<std::vector<T>, Matrix<T>> Matrix<T>::eigen()const {
                         }
                         ret.m_width += tmp.m_width;
                 }else{
+                        if(tmp.m_length == 0 || tmp.m_width == 0)
+                                continue;
                         ret    = tmp;
                         passed = true;
                 }
@@ -895,10 +1075,10 @@ Matrix<T> Matrix<T>::kernel()const {
         for(int i = 0; i < this->m_width; i++) {
                 tmp.m_tab[i + n][i] = 1;
         }
-
         for(int i = 0; i < tmp.m_width && i < tmp.m_length; i++) {
-                if(tmp.m_tab[i][i] < 1e-8 && tmp.m_tab[i][i] > -1e-8) {
+                if(tmp.m_tab[i][i] < PRECISION && tmp.m_tab[i][i] > -PRECISION) {
                         tmp.m_tab[i][i] = 0;
+                        tmp.set_zero();
                         for(int j = i+1; j < this->m_width; j++) {
                                 if(tmp.m_tab[i][j] != 0) {
                                         tmp.swap_colums(i, j);
@@ -908,9 +1088,7 @@ Matrix<T> Matrix<T>::kernel()const {
 
                 }
         }
-
         for(int ii = 0; ii < n; ii++) {
-
                 for(int j = ii+1; j < this->m_width; j++) {
                         auto t = tmp.m_tab[ii][j];
                         if(t != 0) {
@@ -920,12 +1098,12 @@ Matrix<T> Matrix<T>::kernel()const {
                         }
                 }
         }
-        //tmp.display();
+
         Matrix<T> ret;
         int ii = 0;
         for(; ii < this->m_width && ii < this->m_length; ii++) {
                 if(Type::TypeIsDouble<T>::value || Type::TypeIsFloat<T>::value) {
-                        if(tmp.m_tab[ii][ii] < 1e-4 && tmp.m_tab[ii][ii] > -1e-4) {
+                        if(tmp.m_tab[ii][ii] < PRECISION && tmp.m_tab[ii][ii] > -PRECISION) {
                                 tmp.m_tab[ii][ii] = 0;
                                 ret.m_tab.push_back(std::vector<T>(tmp.m_width));
                                 ret.m_width = tmp.m_width;
@@ -955,56 +1133,9 @@ Matrix<T> Matrix<T>::kernel()const {
                         ret.m_tab.back()[i] = tmp.m_tab[i+n][ii];
                 }
         }
-
         ret.transpose();
         return ret;
 
-}
-
-std::vector<std::complex<double>> fft_recursive(const std::vector<std::complex<double>> &a) {
-        if(a.size() == 1)
-                return a;
-        using namespace std::complex_literals;
-        std::vector<std::complex<double>> ret(a.size());
-
-        std::vector<std::complex<double>> v1(a.size() / 2);
-        std::vector<std::complex<double>> v2(a.size() / 2);
-
-        for(int i = 0; i < a.size()/2; i++) {
-                v1[i] = a[i*2];
-                v2[i] = a[i*2+1];
-        }
-
-        auto r1 = fft_recursive(v1);
-        auto r2 = fft_recursive(v2);
-
-        const double PI = std::acos(-1);
-        std::complex<double> w  = 1;
-        const std::complex<double> w1 = std::polar((double)1, (-(2*PI) / a.size()) );
-
-        for(int k = 0; k < r2.size(); k++) {
-                r2[k] *= w;
-                w *= w1;
-                ret[k] = r1[k] + r2[k];
-                ret[k+r2.size()] = r1[k] - r2[k];
-        }
-        return ret;
-}
-
-void resize_2(std::vector<std::complex<double>> &vec) {
-        int n = vec.size();
-        int nn = n;
-        if(n && (!(n & (n-1))))
-                return ;
-        int new_size = 1;
-        while(n != 0) {
-                new_size <<= 1;
-                n >>= 1;
-        }
-
-        vec.resize(new_size);
-        for(int i = nn; i < vec.size(); i++)
-                vec[i] = 0;
 }
 
 template <typename T>
@@ -1023,6 +1154,19 @@ std::vector<std::complex<double>> Matrix<T>::to_complex() const {
                 ret[i].real(this->m_tab[0][i]);
         }
         return ret;
+}
+
+template <typename T>
+void Matrix<T>::set_zero() {
+        if(Type::TypeIsDouble<T>::value || Type::TypeIsFloat<T>::value) {
+                for(int i = 0; i < this->m_length; i++) {
+                        for(int j = 0; j < this->m_width; j++) {
+                                if(this->m_tab[i][j] < PRECISION && this->m_tab[i][j] > -PRECISION) {
+                                        this->m_tab[i][j] = 0;
+                                }
+                        }
+                }
+        }
 }
 
 template <typename T>
@@ -1249,20 +1393,6 @@ Matrix<T> strassen_recursiv(const Matrix<T> &a, const Matrix<T> &b) {
         return ret;
 }
 
-size_t get_power(int n) {
-        if((n & (n - 1)) == 0)
-                return n;
-
-        int length        = n;
-        int l             = 1;
-        while(length > 0) {
-                length = length >> 1;
-                l = l << 1;
-        }
-        return l;
-
-}
-
 namespace CHECK {
         struct No {};
         template<typename T, typename Arg> No operator% (const T&, const Arg&);
@@ -1435,6 +1565,8 @@ void Matrix<T>::triangular_inferior() {
                         multiply_and_add(i, -factor, k);
                 }
         }
+
+        this->set_zero();
 }
 
 template <typename T>
@@ -1469,46 +1601,7 @@ void Matrix<T>::triangular_superior() {
                 if(compt > this->m_length)
                         break;
         }
-}
-
-template <typename T>
-void Matrix<T>::echelon_form() {
-        for(size_t k = 0u; k < this->m_width && k < this->m_length; ++k) {
-
-                if(this->m_tab[k][k] == 0) {//we search for swapping lines if this->m_tab[k][k] == 0
-                        bool ok = false;
-                        for(int i = k; i < this->m_length; i++) {
-                                if(this->m_tab[i][k] != 0) {
-                                        this->swap_lines(k, i);
-                                        ok = true;
-                                        break;
-                                }
-                        }
-                        if(!ok)
-                                continue;
-                }
-
-                T ref = this->m_tab[k][k];
-
-                for(size_t i = k + 1; i < this->m_length; ++i) {
-                        auto factor = (this->m_tab[i][k] / this->m_tab[k][k]);
-
-                        for(size_t j = 0u; j < this->m_width; j++)
-                                this->m_tab[i][j] -= this->m_tab[k][j] * factor;
-
-                }
-        }
-
-
-        for(int j = 0; j < this->m_width && j < this->m_length; j++) {
-                auto tmp = this->m_tab[j][j];
-                if(tmp == 0 || ((Type::TypeIsFloat<T>::value || Type::TypeIsDouble<T>::value) && tmp < 1e-5 && tmp > -1e-5))
-                        continue;
-                for(int i = 0; i < this->m_length; i++) {
-                        this->m_tab[i][j] /= tmp;
-                }
-        }
-
+        this->set_zero();
 }
 
 template <typename T>
