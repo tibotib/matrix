@@ -859,17 +859,13 @@ Matrix<T> Matrix<T>::polynom_multiplication(const Matrix<T> &ma) const{
         for(int i = 0; i < eval1.size(); i++)
                 mult[i] = eval1[i] * eval2[i];
 
-        for(auto e : mult)
-                std::cout << e << " " << std::endl;
-
         auto res = ifft_recursive(mult);
-        for(auto e : res) {
-                std::cout << e << " ";
+        Matrix<T>ret(1,res.size());
+        for(int i = 0; i < res.size(); i++) {
+                ret.m_tab[0][i] = res[i].real();
         }
 
-        std::cout << std::endl;
-
-        return Matrix<T>();
+        return ret;
 }
 
 template <typename T>
