@@ -9,6 +9,8 @@ _Methods of class :_
 
 * __decomposition QR__ using gram schmidt or householder algorithm
 
+* __decomposition SVD__
+
 * __Fast Fourier Transform__
 
 * __Kernel of the matrix__
@@ -16,6 +18,8 @@ _Methods of class :_
 * __inverse modular__
 
 * __Eigen values__ using QR algorithm and __Eigen vectors__
+
+
 
 
 
