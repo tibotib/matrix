@@ -19,6 +19,8 @@ _Methods of class :_
 
 * __Eigen values__ using QR algorithm and __Eigen vectors__
 
+* __Smith normal form__ (only on square matrix)
+
 
 
 
