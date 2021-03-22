@@ -65,6 +65,7 @@ class Matrix {
 
                 Matrix<T> strassen(Matrix<T> a);
                 Matrix<T> pow(int n);
+                Matrix<T> dot512(const Matrix<T> &b)const;
 
                 Matrix<T> operator+(const Matrix<T> &a)const;
                 Matrix<T> operator+=(const Matrix<T> &a) const;
@@ -94,70 +95,76 @@ class Matrix {
                 void triangular_superior();
                 Matrix<T> gaussian_inverse_const()const;//doesn't modify the matrix
                 Matrix<T> gaussian_inverse();//you get the diagonal matrix associated if *this is not singular
+
                 T trace()const;
                 void resize(size_t n);//usefull to compute strassen for all sizes
                 void resize(size_t length, size_t width);
-                std::vector<std::complex<double>> to_complex() const;
                 void set_zero();//set values close to 0 to 0.0
+
+                Matrix<std::complex<double>> fft()const;
+                Matrix<std::complex<double>> ifft()const;
+                Matrix<T> polynom_multiplication(const Matrix<T> &ma) const;
+                std::vector<std::complex<double>> to_complex() const;
 
                 Matrix<T> addGPU(const Matrix<T> &a);
                 Matrix<T> dotGPU(const Matrix<T> &a);
                 Matrix<T> transposeGPU();
 
-                Matrix<T> dot512(const Matrix<T> &b)const;
                 std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> decompositionPLU();
                 std::pair<Matrix<T>, Matrix<T>> decompositionQR()const;
                 std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> decompositionSVD();
+
                 Matrix<T> gram_schmidt()const;
                 Matrix<T> householder()const;
                 Matrix<T> householder_rec(int s, int n = 0)const;
-                Matrix<std::complex<double>> fft()const;
-                Matrix<T> polynom_multiplication(const Matrix<T> &ma) const;
+
                 std::pair<std::vector<T>, Matrix<T>> eigen()const;
                 Matrix<T> kernel()const;
+
+                Matrix<T> SNF()const;
 
                 bool is_permutation()const;
                 bool is_orthonormal();
                 bool is_identity()const;
 
                 Matrix<T> dot_mod(const Matrix<T> &mt, T mod)const;
-                Matrix<T> inverse_mod(T mod);//inverse modulaire
+                Matrix<T> inverse_mod(T p);//inverse modulaire
 };
 
 
 namespace Type {
-        template< class T >
+        template<class T>
         struct TypeIsInt
         {
             static const bool value = false;
         };
 
         template<>
-        struct TypeIsInt< int >
+        struct TypeIsInt<int>
         {
             static const bool value = true;
         };
 
-        template< class T >
+        template<class T>
         struct TypeIsFloat
         {
             static const bool value = false;
         };
 
         template<>
-        struct TypeIsFloat< float >
+        struct TypeIsFloat<float>
         {
             static const bool value = true;
         };
 
-        template< class T >
+        template<class T>
         struct TypeIsDouble
         {
             static const bool value = false;
         };
 
         template<>
-        struct TypeIsDouble< double >
+        struct TypeIsDouble<double>
         {
             static const bool value = true;
         };
@@ -261,6 +268,14 @@ std::tuple<T, T, T> extend_euclid(int n, int p) {//first is gcd
         std::get<2>(ret) = std::get<2>(ret) - (n/p)*std::get<1>(ret);
 
         return ret;
+}
+
+int gcd(std::vector<int> &vec, int beg, int end) {
+        if(beg >= end)
+                return vec[end];
+
+        auto tmp = gcd(vec, beg+1, end);
+        return gcd(tmp, vec[beg]);
 }
 
 template <typename T>
@@ -787,9 +802,9 @@ std::vector<std::complex<double>> fft_recursive(const std::vector<std::complex<d
         const std::complex<double> w1 = std::polar((double)1, (-(2*PI) / a.size()) );
 
         for(int k = 0; k < r2.size(); k++) {
-                r2[k] *= w;
-                w *= w1;
-                ret[k] = r1[k] + r2[k];
+                r2[k]           *= w;
+                w               *= w1;
+                ret[k]           = r1[k] + r2[k];
                 ret[k+r2.size()] = r1[k] - r2[k];
         }
         return ret;
@@ -862,7 +877,7 @@ Matrix<T> Matrix<T>::polynom_multiplication(const Matrix<T> &ma) const{
         auto res = ifft_recursive(mult);
         Matrix<T>ret(1,res.size());
         for(int i = 0; i < res.size(); i++) {
-                ret.m_tab[0][i] = res[i].real();
+                ret.m_tab[0][i] = res[i].real() / max;
         }
 
         return ret;
@@ -878,7 +893,6 @@ std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionSVD() {
         auto u = r1.eigen();
         auto v = r2.eigen();//can be optimised later
 
-        //u.second.transpose();
         for(int i = 0; i < u.second.m_width; i++) {
                 auto nrm = sqrt(u.second.norm_vector(i));
                 if(nrm == 0)
@@ -890,7 +904,7 @@ std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionSVD() {
                         u.second.m_tab[j][i] *= nrm;
                 }
         }
-        //u.second.transpose();
+
         v.second.transpose();
         for(int i = 0; i < v.second.m_length; i++) {
                 auto nrm = sqrt(v.second.norm_vector_line(i));
@@ -905,9 +919,8 @@ std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionSVD() {
         }
 
         auto sigma = Matrix<T>(u.second.m_length, v.second.m_length);
-        for(int i = 0; i < sigma.m_length && i < sigma.m_width; i++) {
+        for(int i = 0; i < sigma.m_length && i < sigma.m_width; i++)
                 sigma.m_tab[i][i] = sqrt(u.first[i]);
-        }
 
         return std::tuple<Matrix<T>, Matrix<T>, Matrix<T>>(u.second, sigma, v.second);
 }
@@ -1131,7 +1144,79 @@ Matrix<T> Matrix<T>::kernel()const {
         }
         ret.transpose();
         return ret;
+}
 
+template <typename T>
+Matrix<T> Matrix<T>::SNF()const {
+        if(!this->is_square())
+                throw std::invalid_argument("Only compute Smith normal form on square matrix\n");
+        auto ret(*this);
+        for(int k = 0; k < ret.m_width-1; k++) {
+                for(int i = k+1; i < ret.m_length; i++) {
+                        while(ret.m_tab[k][i] != 0 || ret.m_tab[i][k] != 0) {//we eliminate 1 or 2 prime factor of ret.m_tab[k][k] at each iteration
+                                if(ret.m_tab[k][k] == 0 || ret.m_tab[i][k] == 0)
+                                        goto second;
+                                if(ret.m_tab[k][k] == 1 || ret.m_tab[i][k] % ret.m_tab[k][k] == 0) {
+
+                                        auto n = ret.m_tab[i][k] / ret.m_tab[k][k];
+                                        for(int j = k; j < ret.m_width; j++) {
+                                                ret.m_tab[i][j] -= n * ret.m_tab[k][j];
+                                        }
+                                }
+                                else{
+                                        auto all        = extend_euclid<int>(ret.m_tab[k][k], ret.m_tab[i][k]);
+                                        Matrix<T> tmp   = Identity<T>(ret.m_length);
+                                        auto pgcd       = std::get<0>(all);
+
+                                        tmp.m_tab[k][k] = std::get<1>(all);
+                                        tmp.m_tab[k][i] = std::get<2>(all);
+                                        tmp.m_tab[i][k] = -ret.m_tab[i][k] / pgcd;
+                                        tmp.m_tab[i][i] = ret.m_tab[k][k] / pgcd;
+
+                                        ret             = tmp.dot(ret);
+                                }
+                                second :
+                                        if(ret.m_tab[k][k] == 0)
+                                                continue;
+                                        if(ret.m_tab[k][k] == 1 || ret.m_tab[k][i] % ret.m_tab[k][k] == 0) {
+
+                                                auto n = ret.m_tab[k][i] / ret.m_tab[k][k];
+                                                for(int j = k; j < ret.m_width; j++) {
+                                                        ret.m_tab[j][i] -= n * ret.m_tab[j][k];
+                                                }
+                                        }
+                                        else{
+                                                auto all        = extend_euclid<int>(ret.m_tab[k][k], ret.m_tab[k][i]);
+                                                Matrix<T> tmp   = Identity<T>(ret.m_length);
+                                                auto pgcd       = std::get<0>(all);
+
+                                                tmp.m_tab[k][k] = std::get<1>(all);
+                                                tmp.m_tab[k][i] = ret.m_tab[k][i] / pgcd;
+                                                tmp.m_tab[i][k] = -std::get<2>(all);
+                                                tmp.m_tab[i][i] = ret.m_tab[k][k] / pgcd;
+
+                                                ret             = ret.dot(tmp);
+                                        }
+                        }
+                }
+
+        }
+
+        for(int i = 0; i < ret.m_length; i++) {//we ensure that ret.m_tab[k][k] divide ret.m_tab[k+1][k+1] otherwise we apply the algorithm
+                for(int j = ret.m_length - 2; j >= i; j--) {
+                        auto pgcd           = gcd(ret.m_tab[j+1][j+1], ret.m_tab[j][j]);
+                        ret.m_tab[j+1][j+1] = ret.m_tab[j][j] * (ret.m_tab[j+1][j+1] / pgcd);
+                        ret.m_tab[j][j]     = pgcd;
+                }
+                for(int j = i; j < ret.m_length-2; j++) {
+                        auto pgcd           = gcd(ret.m_tab[j+1][j+1], ret.m_tab[j][j]);
+                        ret.m_tab[j+1][j+1] = ret.m_tab[j][j] * (ret.m_tab[j+1][j+1] / pgcd);
+                        ret.m_tab[j][j]     = pgcd;
+                }
+
+        }
+
+        return ret;
 }
 
 template <typename T>
@@ -1141,6 +1226,15 @@ Matrix<std::complex<double>> Matrix<T>::fft()const {
 
         auto vec = this->to_complex();
         return Matrix<std::complex<double>>(std::vector<std::vector<std::complex<double>>>(1, fft_recursive(vec)));
+}
+
+template <typename T>
+Matrix<std::complex<double>> Matrix<T>::ifft()const {
+        if(this->m_tab.size() != 1)
+                throw std::invalid_argument("fft take a line vector in entry\n");
+
+        auto vec = this->to_complex();
+        return Matrix<std::complex<double>>(std::vector<std::vector<std::complex<double>>>(1, ifft_recursive(vec)));
 }
 
 template <typename T>

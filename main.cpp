@@ -8,10 +8,17 @@
 #include <chrono>
 #include <boost/rational.hpp>
 #include <unistd.h>
-#define N 8192
+#define N 2048*2
+
+template <typename T>
+void display(const std::vector<T> &a) {
+        for(int i = 0; i < a.size(); i++)
+                std::cout << a[i] << " ";
+        std::cout << std::endl;
+}
 
 int main() {
-        using value_type = double;
+        using value_type = int;
         srand(getpid());
         std::vector<std::vector<value_type>>cpy;
         //std::vector<std::vector<boost::rational<long int>> > cpy;
@@ -65,7 +72,7 @@ Identity
 strassen
 */
 
-        //auto at = ma.dot512(mb);
+        //auto at = ma.strassen(mb);
         //mc.echelon_form();
         //mc.display();
 /*
@@ -94,12 +101,17 @@ multiplication en chaines
         //auto ret = mc.dot(vec_matrix);
         //ret.display();
 /*
-gram_schmidt
+decomposition QR using gram schmidt or householder
 */
         //Matrix<double> q = mc.gram_schmidt();
         //auto qt = q;
         //qt.transpose();
         //(qt.dot(q)).display();
+
+        //auto m  = Matrix<double>(std::vector<std::vector<double>>{{12,-51,4},{6,167,-68},{-4,24,-41}});
+        //auto qr = ma.decompositionQR();
+        //qr.first.display();
+        //qr.second.display();
 /*
 gaussian inverse modular or not
 */
@@ -119,6 +131,42 @@ kernel
         //auto m = Matrix<double>(std::vector<std::vector<double>>{{1,0,-3,0,2,-8}, {0,1,5,0,-1,4},{0,0,0,1,7,-9},{0,0,0,0,0,0}});
         //auto r = ma.kernel();
         //r.display();
+
+/*
+eigen values
+*/
+        //Matrix<double>(std::vector<std::vector<double>>{{0,1,0},{1,-1,1},{0,1,0}});
+        //auto a = Matrix<double>(std::vector<std::vector<double>>{{12,-51,4},{6,167,-68},{-4,24,-41}});
+        //auto r = a.eigen();
+        //for(auto e : r.first)
+        //        std::cout << e << " ";
+        //std::cout << std::endl << std::endl;
+        //r.second.display();
+
+/*
+svd decomposition
+*/
+        //Matrix<double> a = Matrix<double>(std::vector<std::vector<double>>{{3,1,1},{-1,3,1}});
+        //auto svd = a.decompositionSVD();
+        //std::get<0>(svd).display();
+        //std::get<1>(svd).display();
+        //std::get<2>(svd).display();
+
+/*
+polynom multiplication
+*/
+        //Matrix<int> p1(std::vector<std::vector<int>>{{3,2,1}});
+        //Matrix<int> p2(std::vector<std::vector<int>>{{4,8,9}});
+        //auto res = p1.polynom_multiplication(p2);
+        //res.display();
+
+/*
+SNF
+*/
+        Matrix<int> a = Matrix<int>(std::vector<std::vector<int>>{{2,4,4},{-6,6,1},{0,0,0}});
+        a.display();
+        a.SNF().display();
+
 
         std::cout <<std::endl << "end" << std::endl;
         auto stop = std::chrono::high_resolution_clock::now();
