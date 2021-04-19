@@ -68,16 +68,16 @@ class Matrix {
                 Matrix<T> dot512(const Matrix<T> &b)const;
 
                 Matrix<T> operator+(const Matrix<T> &a)const;
-                Matrix<T> operator+=(const Matrix<T> &a) const;
+                Matrix<T> operator+=(const Matrix<T> &a);
 
                 Matrix<T> operator-(const Matrix<T> &a) const;
-                Matrix<T> operator-=(const Matrix<T> &a) const;
+                Matrix<T> operator-=(const Matrix<T> &a);
 
                 Matrix<T> operator*(const Matrix<T> &a) const;
-                Matrix<T> operator*=(const Matrix<T> &a)const;
+                Matrix<T> operator*=(const Matrix<T> &a);
 
                 Matrix<T> operator*(const T &a)const;
-                Matrix<T> operator*=(const T &a)const;
+                Matrix<T> operator*=(const T &a);
 
                 bool operator==(const Matrix<T> &)const;
                 bool operator!=(const Matrix<T> &)const;
@@ -401,13 +401,13 @@ Matrix<T> Matrix<T>::operator-(const Matrix<T> &a) const {
 }
 
 template<typename T>
-Matrix<T> Matrix<T>::operator+=(const Matrix<T> &a) const {
+Matrix<T> Matrix<T>::operator+=(const Matrix<T> &a)  {
         *this = *this + a;
         return *this;
 }
 
 template <typename T>
-Matrix<T> Matrix<T>::operator-=(const Matrix<T> &a) const {
+Matrix<T> Matrix<T>::operator-=(const Matrix<T> &a)  {
         *this = *this - a;
         return *this;
 }
@@ -527,7 +527,7 @@ Matrix<T> Matrix<T>::operator*(const Matrix<T> &a)const {
 }
 
 template <typename T>
-Matrix<T> Matrix<T>::operator*=(const Matrix<T> &a)const {
+Matrix<T> Matrix<T>::operator*=(const Matrix<T> &a) {
         *this = *this * a;
         return *this;
 }
@@ -538,7 +538,7 @@ Matrix<T> Matrix<T>::operator*(const T &a)const {
 }
 
 template <typename T>
-Matrix<T> Matrix<T>::operator*=(const T &a)const {
+Matrix<T> Matrix<T>::operator*=(const T &a) {
         *this = *this * a;
         return *this;
 }
