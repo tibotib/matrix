@@ -68,10 +68,10 @@ class Matrix {
                 Matrix<T> dot512(const Matrix<T> &b)const;
 
                 Matrix<T> operator+(const Matrix<T> &a)const;
-                Matrix<T> operator+=(const Matrix<T> &a);
+                Matrix<T> operator+=(const Matrix<T> &a) ;
 
                 Matrix<T> operator-(const Matrix<T> &a) const;
-                Matrix<T> operator-=(const Matrix<T> &a);
+                Matrix<T> operator-=(const Matrix<T> &a) ;
 
                 Matrix<T> operator*(const Matrix<T> &a) const;
                 Matrix<T> operator*=(const Matrix<T> &a);
@@ -401,13 +401,13 @@ Matrix<T> Matrix<T>::operator-(const Matrix<T> &a) const {
 }
 
 template<typename T>
-Matrix<T> Matrix<T>::operator+=(const Matrix<T> &a)  {
-        *this = *this + a;
+Matrix<T> Matrix<T>::operator+=(const Matrix<T> &a) {
+        *this = a + *this;
         return *this;
 }
 
 template <typename T>
-Matrix<T> Matrix<T>::operator-=(const Matrix<T> &a)  {
+Matrix<T> Matrix<T>::operator-=(const Matrix<T> &a) {
         *this = *this - a;
         return *this;
 }
@@ -687,7 +687,7 @@ static T m_abs(T ele) {
 }
 
 template <typename T>
-static void swap(T &a, T &b) {
+static void swapp(T &a, T &b) {
         auto tmp = a;
         a = b;
         b = tmp;
@@ -746,7 +746,7 @@ std::tuple<Matrix<T>, Matrix<T>, Matrix<T>> Matrix<T>::decompositionPLU() {
         for(int i = 0; i < this->m_length; i++) {//on parse v, le tableau des permutations
                 P.m_tab[i][v[i]] = 1;
                 for(int j = 0; j < v[i] && j < v[v[i]]; j++) {
-                        swap(L.m_tab[v[i]][j], L.m_tab[v[v[i]]][j]);
+                        swapp(L.m_tab[v[i]][j], L.m_tab[v[v[i]]][j]);
                 }
         }
 
@@ -1150,6 +1150,7 @@ template <typename T>
 Matrix<T> Matrix<T>::SNF()const {
         if(!this->is_square())
                 throw std::invalid_argument("Only compute Smith normal form on square matrix\n");
+
         auto ret(*this);
         for(int k = 0; k < ret.m_width-1; k++) {
                 for(int i = k+1; i < ret.m_length; i++) {
@@ -1561,24 +1562,13 @@ void Matrix<T>::resize(size_t s) {
 
 template <typename T>
 void Matrix<T>::resize(size_t length, size_t width) {
-        if(length < this->m_length) {
-                auto i = length;
-                while(i != this->m_length) {
-                        this->m_tab.pop_back();
-                        ++i;
-                }
-        }
+        this->m_tab.resize(length, std::vector<T>(width));
         this->m_length = length;
-        if(width < this->m_width) {
-                for(size_t i = 0u; i < this->m_length; i++) {
-                        auto j = width;
-                        while(j != this->m_width) {
-                                this->m_tab[i].pop_back();
-                                ++j;
-                        }
-                }
+        if(width != this->m_width) {
+                for(int i = 0; i < this->m_length; i++)
+                        this->m_tab[i].resize(width);
+                this->m_width = width;
         }
-        this->m_width = width;
 }
 
 template <typename T>
@@ -1627,7 +1617,7 @@ void Matrix<T>::swap_lines(int i, int ii) {
 template <typename T>
 void Matrix<T>::swap_colums(int j, int jj) {
         for(int i = 0; i < this->m_length; i++)
-                swap(this->m_tab[i][j], this->m_tab[i][jj]);
+                swapp(this->m_tab[i][j], this->m_tab[i][jj]);
 }
 
 template <typename T>
@@ -1709,7 +1699,7 @@ Matrix<T> Matrix<T>::gaussian_inverse() {
                         for(int i = k; i < this->m_length; i++) {
                                 if(this->m_tab[i][k] != 0) {
                                         this->swap_lines(k, i);
-                                        swap(id.m_tab[i], id.m_tab[k]);
+                                        swapp(id.m_tab[i], id.m_tab[k]);
                                         ok = true;
                                         break;
                                 }
